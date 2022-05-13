@@ -15,7 +15,7 @@ rm(list = ls())
 #Custom functions
 
 #Increase max size of upload file to 30 MB.
-options(shiny.maxRequestSize = 120*1024^2)
+options(shiny.maxRequestSize = 150*1024^2)
 
 # Read in BC shapefile and subwatersheds.
 bc = read_sf("W:/CMadsen/SpatialData/bc_simple.shp") %>% st_transform(crs = 4326)
