@@ -8,51 +8,28 @@ library(DT)
 library(readxl)
 library(classInt); library(BAMMtools) #For binning
 
-### THIS SECTION SETS UP FILES BEFORE LAUNCHING R SHINY APPLICATION ###
-
 rm(list = ls())
 
+#--------------------------------------------------------------------
 #Custom functions
+
+#--------------------------------------------------------------------
+# OPTIONS
 
 #Increase max size of upload file to 30 MB.
 options(shiny.maxRequestSize = 150*1024^2)
 
+#--------------------------------------------------------------------
+# LOAD IN BACKGROUND FILES
+
 # Read in BC shapefile and subwatersheds.
-bc = read_sf("W:/CMadsen/SpatialData/bc_simple.shp") %>% st_transform(crs = 4326)
+bc = read_sf("bc_simple.gpkg") %>% st_transform(crs = 4326)
 #subw = read_sf("W:/CMadsen/SpatialData/WatershedGroups.shp") %>% st_transform(crs = 4326)
-flnro = read_sf("W:/CMadsen/SpatialData/FLNRO_Fishing_Boundaries.shp") %>% st_transform(crs = 4326)
+flnro = read_sf("FLNRO_Fishing_Boundaries.gpkg") %>% st_transform(crs = 4326)
 
-all_data_files = c("Variable 1" = "UserDat1",
-                   "Variable 2" = "UserDat2",
-                   "Variable 3" = "UserDat3",
-                   "Variable 4" = "UserDat4",
-                   "Variable 5" = "UserDat5",
-                   "Variable 6" = "UserDat6")
+#--------------------------------------------------------------------
+#SET UP USER INTERFACE
 
-# Generate fake badger data.
-boundaries = as.data.frame(as.matrix(st_bbox(bc)))
-
-bc_center = data.frame(lon = (boundaries[1,1] + boundaries[3,1])/2,
-                       lat = (boundaries[2,1] + boundaries[4,1])/2)
-
-badg = data.frame(year = sample(2015:2021, 100, replace = T), 
-                  data_type = sample(c("Den","Sighting"), 100, replace = T),
-                  a = sample(1:10, 100, replace = T),
-                  b = sample(20:40, 100, replace = T),
-                  c = sample(0.1:1, 100, replace = T),
-                  d = rnorm(100, mean = 3, sd = 1),
-                  e = rnorm(100, mean = 100, sd = 10),
-                  lon = rnorm(100, mean = bc_center$lon, sd = 4),
-                  lat = rnorm(100, mean = bc_center$lat, sd = 4)) %>% 
-  mutate(lon_map = lon, lat_map = lat)
-
-badg = st_as_sf(badg, coords = c("lon_map","lat_map"), crs = 4326)
-
-#Filter out points outside of bc...
-badg = st_join(badg, bc, st_intersects) %>% 
-  filter(!is.na(TYPE_1)) %>% select(year:lat)
-
-#Set up user interface.
 ui <- fluidPage(
   withMathJax(),
   #titlePanel("Risk Model \nTool"),
@@ -155,6 +132,9 @@ ui <- fluidPage(
   #),
   # width = '300px'
 )
+
+#--------------------------------------------------------------------
+# SET UP SERVER
 
 server <- function(input, output, session) {
   bc = read_sf("W:/CMadsen/SpatialData/bc_simple.shp")
