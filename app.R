@@ -40,22 +40,20 @@ ui <- fluidPage(
         align = "center",
         h2("Risk Model Tool"),
         hr(style = "border-top: 4px solid #980028;"),
-        h4("Step 1. Upload your dataset(s) of and select \nthe variable(s) you will use. \nThese can be either tables or spatial files \n(.xlsx, .zip, or .gpkg)"),
+        h4("Step 1. Upload your dataset, \nselect variables"),
         hr(style = "border-top: 1px solid #980028; opacity: 0"),
-        h4("Step 2. Clean and bin your variable(s)"),
+        h4("Step 2. Clean and bin variables"),
         hr(style = "border-top: 1px solid #980028; opacity: 0"),
-        h4("Step 3. Set up the model. How will your variables interact?"),
+        h4("Step 3. Set up model. How will your variables interact?"),
         hr(style = "border-top: 1px solid #980028; opacity: 0"),
-        h4("Step 4. Run the model. Inspect the output in tabs 3 and 4"),
-        actionButton("run_model","Run Model!"),
+        h4("Step 4. Inspect results. Download shapefile."),
         hr(style = "border-top: 1px solid #980028; opacity: 0"),
-        h4("Step 5. Download the results"),
         hr(style = "border-top: 5px solid #980028;"),
         h3("Contact Information"),
         h5("App Developer: Chris Madsen"),
         h5("Chris.Madsen@gov.bc.ca")
       ),
-      width = 2
+      width = 3
     ),
     mainPanel(
       tabsetPanel(
@@ -86,17 +84,16 @@ ui <- fluidPage(
                    actionButton(inputId = "finalize_binning", "Finish Binning Data"),
                    verbatimTextOutput('selectedcolumns')
                    ),
-                 verbatimTextOutput('variable_1_check'),
-                 column(4,
+                 column(3,
                         inputPanel(
                           tags$div(id = 'variable_filters')
                         )
                  ),
-                 column(4,
+                 column(3,
                         inputPanel(
                           tags$div(id = 'variable_bins')
                         )),
-                 column(4,
+                 column(6,
                         inputPanel(
                           tags$div(id = 'variable_histograms')
                         )),
@@ -105,6 +102,7 @@ ui <- fluidPage(
                  )
                  ),
         tabPanel("Model Specification",
+                 h3("Model:"),
                  uiOutput('modeltext'),
                  tags$div(id = "variable_coefs"),
                  radioButtons(inputId = "bin_results",
@@ -135,7 +133,7 @@ ui <- fluidPage(
                             )
         )
       ),
-      width = 10
+      width = 9
     )
   )
   #),
@@ -271,6 +269,24 @@ server <- function(input, output, session) {
                  id = id))
     }
     
+    #Make binning selector (drop down)
+    for(i in 1:input$number_vars){
+      id <- paste0('variable_bin_', i)
+      
+      variable_name = input[[paste0("variable_", i)]]
+      
+      insertUI(selector = '#variable_bins',
+               ui = tags$div(tags$p(
+                 selectInput(
+                   inputId = paste0("bin_",i),
+                   label = paste0("Bin ",variable_name),
+                   choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
+                   width = "150%"
+                 )),
+                 id = id))
+      
+    }
+    
     #Make histograms that show, for each variable, the result of the binning style.
     for(i in 1:input$number_vars){
       id <- paste0('variable_histogram_', i)
@@ -294,24 +310,6 @@ server <- function(input, output, session) {
                    )),
                    id = id))
       })
-    }
-    
-    #Make binning selector (drop down)
-    for(i in 1:input$number_vars){
-      id <- paste0('variable_bin_', i)
-      
-      variable_name = input[[paste0("variable_", i)]]
-      
-      insertUI(selector = '#variable_bins',
-               ui = tags$div(tags$p(
-                 selectInput(
-                   inputId = paste0("bin_",i),
-                   label = paste0("Bin ",variable_name),
-                   choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
-                   width = "200%"
-                 )),
-                 id = id))
-      
     }
   })
   
@@ -368,7 +366,7 @@ server <- function(input, output, session) {
     return(dat)
   })
   
-  output$bin_check = renderDataTable(UserDatBinned()[1:5,])
+  output$bin_check = renderDataTable(UserDatBinned())
   
   # ---------------------------------------- # 
   #          Model Specification             #
@@ -419,7 +417,7 @@ server <- function(input, output, session) {
 })
   
   output$modeltext = renderUI({
-    withMathJax(paste0("Use this formula: $$", ModelDisplay(),"$$"))
+    withMathJax(paste0("$$", ModelDisplay(),"$$"))
   })
   
   #Sum across columns to calculate result column.
@@ -450,7 +448,7 @@ server <- function(input, output, session) {
     return(dat)
   })
   
-  output$model_result = renderDataTable(UserDatSummed()[1:5,])
+  output$model_result = renderDataTable(UserDatSummed())
 
   # ---------------------------------------- # 
   #             Output Options               #
