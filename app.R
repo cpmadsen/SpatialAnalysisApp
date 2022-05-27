@@ -83,6 +83,7 @@ ui <- fluidPage(
         tabPanel("Data Cleaning + Binning",
                  fluidRow(
                    actionButton(inputId = "start_cleaning", "Start Cleaning Data"),
+                   actionButton(inputId = "finalize_binning", "Finish Binning Data"),
                    verbatimTextOutput('selectedcolumns')
                    ),
                  verbatimTextOutput('variable_1_check'),
@@ -105,7 +106,15 @@ ui <- fluidPage(
                  ),
         tabPanel("Model Specification",
                  uiOutput('modeltext'),
-                 tags$div(id = "variable_radiobuttons")
+                 tags$div(id = "variable_coefs"),
+                 radioButtons(inputId = "bin_results",
+                              label = "Bin model results into 3 bins?",
+                              choices = c("Yes","No"),
+                              selected = "No"),
+                 hr(),
+                 hr(),
+                 h3("Model Output"),
+                 dataTableOutput('model_result'),
         ),
         tabPanel("Output Options",
                  inputPanel(selectInput("spat_scale", label = "Spatial Scale", 
@@ -119,12 +128,12 @@ ui <- fluidPage(
                                       placeholder = "Upload file (zip, gpkg, or xlsx")),
                  inputPanel(selectInput("output_type", label = "Output Type",
                                         choices = c("Polygon/Vector" = "vec_output",
-                                                    "Raster" = "rast_output"))),
-                 dataTableOutput('valence_check')
+                                                    "Raster" = "rast_output")))
         ),
-        tabPanel("Results",
-                 plotOutput('spatial_results_plot'),
-                 dataTableOutput('spatial_results_table'))
+        tabPanel("Results"#,
+                 #plotOutput('spatial_results_plot'),
+                 #dataTableOutput('spatial_results_table')
+                 )
       ),
       width = 10
     )
@@ -223,18 +232,6 @@ server <- function(input, output, session) {
   # ---------------------------------------- # 
   #----------------------------------------------------------------------------
   
-  #Make reactive expression to get column subset of original data for just those
-  #columns that user has selected.
-  # UserDatF = reactive({
-  #   vars_to_keep = c()
-  #   for(i in 1:input$number_vars){
-  #     vars_to_keep = c(vars_to_keep, eval(sym(paste0("input$variable_",i))))
-  #   }
-  #   
-  #   UserDat() %>% 
-  #     dplyr::select(all_of(vars_to_keep))
-  # })
-  
   # Get a reactive vector of column names that have been selected.
   SelectedColumns = reactive({
     selected_vars = c()
@@ -244,9 +241,10 @@ server <- function(input, output, session) {
     selected_vars
   })
 
-  output$selectedcolumns = renderText({SelectedColumns()})
+  output$selectedcolumns = renderText(SelectedColumns())
   
-  #Render the data filtering and binning options for each selected variable.
+  #Render the data filtering and binning options for each selected variable,
+  # once the user clicks on the "start cleaning" button.
   observeEvent(input$start_cleaning, {
     
     if(is.null(input$variable_1))return(NULL)
@@ -271,80 +269,9 @@ server <- function(input, output, session) {
                  )),
                  id = id))
     }
-
-    #Take each variable from the user's dataset and apply the range filters. Save
-    # the result as reactive expression.
-    UserDatFiltered = reactive({
-      dat = UserDat()
-      
-      #Cycle through all of the variable inputs, applying filters as you go.
-      for(i in 1:input$number_vars){
-        
-        variable_name = input[[paste0("variable_", i)]]
-        
-        dat = dat %>% 
-          dplyr::filter(.[[variable_name]] >= input[[paste0("slider_",i)]][1],
-                        .[[variable_name]] < input[[paste0("slider_",i)]][2])
-      }
-      
-      dat
-    })
-  
+    
+    #Make histograms that show, for each variable, the result of the binning style.
     for(i in 1:input$number_vars){
-      #Make binning selector (drop down)
-      id <- paste0('variable_bin_', i)
-      
-      variable_name = input[[paste0("variable_", i)]]
-      
-      insertUI(selector = '#variable_bins',
-               ui = tags$div(tags$p(
-                 selectInput(
-                   inputId = paste0("bin_",i),
-                   label = paste0("Bin ",variable_name),
-                   choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
-                   width = "200%"
-                 )),
-                 id = id))
-      
-    }
-    
-    #Bin user data, depending on bin input.
-    UserDatBinned = reactive({
-      
-      dat = UserDatFiltered()
-      
-      variables = SelectedColumns()
-      
-      for(i in 1:length(variables)){
-        
-        if(input[[paste0("bin_",i)]] == "Equal Width Bins"){
-          dat = dat %>% 
-            mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(cut(!!sym(variables[i]),3)))
-        }
-        if(input[[paste0("bin_",i)]] == "Equal Sample Bins"){
-          dat = dat %>% 
-            mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(Hmisc::cut2(!!sym(variables[i]), g = 3)))
-        }
-        if(input[[paste0("bin_",i)]] == "Natural Jenks"){
-          
-          #my.breaks = getJenksBreaks(dat[[paste0(variables[i],"_binned")]], k = 4)
-          #Subtract 1 from lowest break, otherwise we lose the lowest observation.
-          #my.breaks[1] = (my.breaks[1]-1)
-          
-          dat = dat %>% 
-            mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(cut(!!sym(variables[i]), 
-                                                                           breaks = getJenksBreaks(!!sym(variables[i]),
-                                                                                                   k = 4),
-                                                                           include.lowest = T)))
-        }
-      }
-      dat
-    })
-    
-    output$bin_check = renderDataTable(UserDatBinned()[1:5,])
-    
-    for(i in 1:input$number_vars){
-      #Make plot that is informed by the above selections.
       id <- paste0('variable_histogram_', i)
       
       local({
@@ -367,54 +294,108 @@ server <- function(input, output, session) {
                    id = id))
       })
     }
+    
+    #Make binning selector (drop down)
+    for(i in 1:input$number_vars){
+      id <- paste0('variable_bin_', i)
+      
+      variable_name = input[[paste0("variable_", i)]]
+      
+      insertUI(selector = '#variable_bins',
+               ui = tags$div(tags$p(
+                 selectInput(
+                   inputId = paste0("bin_",i),
+                   label = paste0("Bin ",variable_name),
+                   choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
+                   width = "200%"
+                 )),
+                 id = id))
+      
+    }
   })
+  
+  #Take each variable from the user's dataset and apply the range filters. Save
+  # the result as a reactive expression.
+  UserDatFiltered = reactive({
+    if(is.null(input$slider_1))return(NULL)
+    
+    dat = UserDat()
+    
+    #Cycle through all of the variable inputs, applying filters as you go.
+    for(i in 1:input$number_vars){
+      
+      variable_name = input[[paste0("variable_", i)]]
+      
+      dat = dat %>% 
+        dplyr::filter(.[[variable_name]] >= input[[paste0("slider_",i)]][1],
+                      .[[variable_name]] < input[[paste0("slider_",i)]][2])
+    }
+    
+    dat
+  })
+  
+  #Bin user data, depending on bin input.
+  UserDatBinned = reactive({
+    if(is.null(input$slider_1) | is.null(input$bin_1))return(NULL)
+    
+    dat = UserDatFiltered()
+    
+    variables = SelectedColumns()
+    
+    #For each of the variables the user has selected from their dataset...
+    for(i in 1:length(variables)){
+      
+      #If user selects "Equal Width Bins" option...
+      if(input[[paste0("bin_",i)]] == "Equal Width Bins"){
+        dat = dat %>% 
+          mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(cut(!!sym(variables[i]),3)))
+      }
+      #If user selects "Equal Sample Bins" option...
+      if(input[[paste0("bin_",i)]] == "Equal Sample Bins"){
+        dat = dat %>% 
+          mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(Hmisc::cut2(!!sym(variables[i]), g = 3)))
+      }
+      #If user selects "Natural Jenks" option...
+      if(input[[paste0("bin_",i)]] == "Natural Jenks"){
+        dat = dat %>% 
+          mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(cut(!!sym(variables[i]), 
+                                                                         breaks = getJenksBreaks(!!sym(variables[i]),
+                                                                                                 k = 4),
+                                                                         include.lowest = T)))
+      }
+    }
+    return(dat)
+  })
+  
+  output$bin_check = renderDataTable(UserDatBinned()[1:5,])
   
   # ---------------------------------------- # 
   #          Model Specification             #
   # ---------------------------------------- # 
   #----------------------------------------------------------------------------
   
-  # Render radio buttons for each variable with which user can choose valence of variable.
-  inserted_radiobuttons <- c()
+  # Render numeric inputs for each variable with which the user can set the coefficient of each covariate.
+  inserted_coefs <- c()
   observeEvent(input$number_vars, {
     
     variable_number <- input$number_vars
-    id <- paste0('variable_radiobutton_', variable_number)
-    if (input$number_vars > length(inserted_radiobuttons)) {
-      insertUI(selector = '#variable_radiobuttons',
+    id <- paste0('variable_coef_', variable_number)
+    if (input$number_vars > length(inserted_coefs)) {
+      insertUI(selector = '#variable_coefs',
                ui = tags$div(tags$p(
-                 radioButtons(
-                   inputId = paste0("variable_radiobutton_",variable_number),
-                   label = paste0("Valence of ",input[[paste0("variable_",variable_number)]]),
-                   choices =list("Positive" = 1, "Negative" = -1),
-                   selected = 1
+                 textInput(
+                   inputId = paste0("variable_coef_",variable_number),
+                   value = 1,
+                   label = paste0("Coefficient of variable ",variable_number, " (must be numeric)"),
                  )),
                  id = id))
-      inserted_radiobuttons <<- c(id, inserted_radiobuttons)
+      inserted_coefs <<- c(id, inserted_coefs)
     }
     else {
-      inserted_radiobuttons <- sort(inserted_radiobuttons)
-      removeUI(selector = paste0('#', inserted_radiobuttons[length(inserted_radiobuttons)]))          
-      inserted_radiobuttons <<- inserted_radiobuttons[-length(inserted_radiobuttons)]
+      inserted_coefs <- sort(inserted_coefs)
+      removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
+      inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
     }
-  })
-  
-  UserDatValenced = reactive({
-    
-    dat = UserDatBinned()
-    
-    for(i in 1:input$number_vars){
-      variable_name = input[[paste0("variable_", i)]]
-      variable_name = paste0(variable_name,"_binned")
-      
-      if(input[[paste0("variable_radiobutton_",i)]] == -1){
-        
-        dat[[variable_name]] = -1*dat[[variable_name]]
-        
-      }
-    }
-    
-    return(dat)
   })
   
   #Make math form of model. This is just to make a UI for the user.
@@ -426,9 +407,9 @@ server <- function(input, output, session) {
       
       varname = input[[paste0("variable_", i)]]
       
-      mod = ifelse(input[[paste0("variable_radiobutton_",i)]] == -1, "(-", "(")
+      mod = input[[paste0("variable_coef_", i)]]
       
-      vars = c(vars, paste0(mod,varname,")"))
+      vars = c(vars, paste0(mod,"(",varname,")"))
     }
       
     model = paste0("Output = ",paste0(vars, collapse = " + "))
@@ -442,36 +423,53 @@ server <- function(input, output, session) {
   
   #Sum across columns to calculate result column.
   UserDatSummed = reactive({
-    if(is.null(input$variable_1)){return(NULL)}
-  
-    result = rowSums(UserDatValenced() %>% 
-                           dplyr::select(ends_with("_binned")))
-    
-    UserDatValenced() %>% 
-      dplyr::select(result, geometry)
-  })
-  
-  output$valence_check = renderDataTable(UserDatValenced()[1:5,])
-  #Join output values from model to spatial polygon that user has chosen.
-  SpatialResults = reactive({
-    #If selected FLNRORD regions as output...
-    summed_dat = UserDatSummed() %>% 
-      st_join(flnro) %>% 
-      st_drop_geometry() %>% 
-      group_by(REGION_N) %>% 
-      summarise(mean_result = mean(result,na.rm=T))
-    
-    spatial_results = flnro %>% 
-      left_join(summed_dat)
-    
-    spatial_results
-  })
+    if(is.null(input$slider_1)){return(NULL)}
 
-  output$spatial_results_table = renderDataTable(SpatialResults())
-  output$spatial_results = renderPlot({
-    ggplot() +
-      geom_sf(data = SpatialResults(), aes(fill = mean_result))
+    dat = UserDatBinned()
+
+    #Apply the coefficients entered by the user to each variable.
+    for(i in 1:input$number_vars){
+
+      variables = paste0(SelectedColumns(),"_binned")
+      
+      dat = dat %>% 
+        mutate(mod = input[[paste0("variable_coef_", i)]]) %>% 
+        mutate(mod = as.numeric(mod)) %>% 
+        mutate(!!sym(paste0(variables[i],"_with_mod")) := (mod * !!sym(variables[i])))
+    }
+    
+    dat$result = rowSums(dat %>% st_drop_geometry() %>% select(ends_with("_binned_with_mod")))
+    
+    dat = dat %>% select(ends_with("_binned"), result)
+    
+    if(input$bin_results == "Yes"){
+      dat = dat %>% mutate(result = as.numeric(cut(result,3)))
+    }
+    return(dat)
   })
+  
+  output$model_result = renderDataTable(UserDatSummed()[1:5,])
+  
+  #Join output values from model to spatial polygon that user has chosen.
+  # SpatialResults = reactive({
+  #   #If selected FLNRORD regions as output...
+  #   summed_dat = UserDatSummed() %>% 
+  #     st_join(flnro) %>% 
+  #     st_drop_geometry() %>% 
+  #     group_by(REGION_N) %>% 
+  #     summarise(mean_result = mean(result,na.rm=T))
+  #   
+  #   spatial_results = flnro %>% 
+  #     left_join(summed_dat)
+  #   
+  #   spatial_results
+  # })
+  # 
+  # output$spatial_results_table = renderDataTable(SpatialResults())
+  # output$spatial_results = renderPlot({
+  #   ggplot() +
+  #     geom_sf(data = SpatialResults(), aes(fill = mean_result))
+  # })
   
   # ---------------------------------------- # 
   #             Output Options               #
