@@ -116,11 +116,9 @@ ui <- fluidPage(
                  h3("Model Output"),
                  dataTableOutput('model_result'),
         ),
-        tabPanel("Output Options",
+        tabPanel("Results",
                  inputPanel(selectInput("spat_scale", label = "Spatial Scale", 
-                                        choices = c("B.C." = "bc_scale",
-                                                    "Subwatershed" = "subw_scale",
-                                                    "FLNRORD fisheries regions" = "flnro",
+                                        choices = c("FLNRORD fisheries regions" = "flnro",
                                                     "Your Polygon(s)" = "user_poly_scale"), 
                                         selectize = F),
                             fileInput(inputId = "user_scale_poly", label = "Your Polygon(s)",
@@ -128,12 +126,14 @@ ui <- fluidPage(
                                       placeholder = "Upload file (zip, gpkg, or xlsx")),
                  inputPanel(selectInput("output_type", label = "Output Type",
                                         choices = c("Polygon/Vector" = "vec_output",
-                                                    "Raster" = "rast_output")))
-        ),
-        tabPanel("Results"#,
-                 #plotOutput('spatial_results_plot'),
-                 #dataTableOutput('spatial_results_table')
-                 )
+                                                    "Raster" = "rast_output"))),
+                 inputPanel(
+                   plotOutput('spatial_results_map', width = '100%', height = '100%')
+                 ),
+                 inputPanel(h3("Download"),
+                            downloadButton('downloadData',"Download Shapefile with results")
+                            )
+        )
       ),
       width = 10
     )
@@ -146,7 +146,8 @@ ui <- fluidPage(
 # SET UP SERVER
 
 server <- function(input, output, session) {
-  bc = read_sf("W:/CMadsen/SpatialData/bc_simple.shp")
+  bc = read_sf("bc_simple.gpkg")
+  flnro = read_sf("FLNRO_Fishing_Boundaries.gpkg")
   
   #Render the variable selection drop-downs based on the user's number input.
   inserted_variableselections <- c()
@@ -445,38 +446,19 @@ server <- function(input, output, session) {
     if(input$bin_results == "Yes"){
       dat = dat %>% mutate(result = as.numeric(cut(result,3)))
     }
+    
     return(dat)
   })
   
   output$model_result = renderDataTable(UserDatSummed()[1:5,])
-  
-  #Join output values from model to spatial polygon that user has chosen.
-  # SpatialResults = reactive({
-  #   #If selected FLNRORD regions as output...
-  #   summed_dat = UserDatSummed() %>% 
-  #     st_join(flnro) %>% 
-  #     st_drop_geometry() %>% 
-  #     group_by(REGION_N) %>% 
-  #     summarise(mean_result = mean(result,na.rm=T))
-  #   
-  #   spatial_results = flnro %>% 
-  #     left_join(summed_dat)
-  #   
-  #   spatial_results
-  # })
-  # 
-  # output$spatial_results_table = renderDataTable(SpatialResults())
-  # output$spatial_results = renderPlot({
-  #   ggplot() +
-  #     geom_sf(data = SpatialResults(), aes(fill = mean_result))
-  # })
-  
+
   # ---------------------------------------- # 
   #             Output Options               #
   # ---------------------------------------- # 
   #----------------------------------------------------------------------------
   #Read in user polygon for scale, if provided.
   UserScalePoly = reactive({
+    
     file_name = input$user_scale_poly
     
     if(is.null(file_name)) return(NULL)
@@ -516,6 +498,55 @@ server <- function(input, output, session) {
       return(userpoly)
     }
   })
+  
+  #Join output values from model to spatial polygon that user has chosen.
+  SpatialResults = reactive({
+    
+    if(input$spat_scale == "flnro"){
+    #If selected FLNRORD regions as spatial scale
+    summed_dat = UserDatSummed() %>%
+      st_join(flnro) %>%
+      st_drop_geometry() %>%
+      group_by(REGION_N) %>%
+      summarise(mean_result = mean(result,na.rm=T))
+    
+    spatial_results = flnro %>%
+      left_join(summed_dat)
+    }
+    
+    if(input$spat_scale == "user_poly_scale"){
+      #If selected User Polygon as spatial scale...
+      summed_dat = UserDatSummed() %>%
+        st_join(UserScalePoly() %>% mutate(row.number = row_number())) %>%
+        st_drop_geometry() %>%
+        group_by(row.number) %>%
+        summarise(mean_result = mean(result,na.rm=T))
+      
+      spatial_results = UserScalePoly() %>%
+        left_join(summed_dat)
+    }
+    return(spatial_results)
+  })
+  
+  output$spatial_results_table = renderDataTable(SpatialResults())
+  
+  output$spatial_results_map = renderPlot({
+    ggplot() +
+      geom_sf(data = SpatialResults(), aes(fill = mean_result)) + 
+      geom_sf(data = UserDatBinned(), col = "darkgreen")
+  },
+  width = 700, 
+  height = 500
+  )
+  
+  output$downloadData <- downloadHandler(
+      filename = function() {
+        paste0('Spatial_Analysis_App_Output_', Sys.Date(), '.gpkg')
+      },
+      content = function(con) {
+        write_sf(SpatialResults(), con)
+      }
+    )
 }
 
 shinyApp(ui = ui, server = server)
