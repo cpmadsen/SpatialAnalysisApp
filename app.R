@@ -5,6 +5,7 @@ library(sf)
 library(leaflet)
 library(leaflet.extras)
 library(DT)
+library(terra)
 library(readxl)
 library(classInt); library(BAMMtools) #For binning
 
@@ -81,7 +82,6 @@ ui <- fluidPage(
         tabPanel("Data Cleaning + Binning",
                  fluidRow(
                    actionButton(inputId = "start_cleaning", "Start Cleaning Data"),
-                   actionButton(inputId = "finalize_binning", "Finish Binning Data"),
                    actionButton(inputId = "restart_cleaning", "Restart Cleaning"),
                    ),
                  #uiOutput('binning_panel'),
@@ -125,7 +125,8 @@ ui <- fluidPage(
                                       placeholder = "Upload file (zip, gpkg, or xlsx")),
                  inputPanel(selectInput("output_type", label = "Output Type",
                                         choices = c("Polygon/Vector" = "vec_output",
-                                                    "Raster" = "rast_output"))),
+                                                    "Raster" = "rast_output")),
+                            uiOutput('raster_res')),
                  inputPanel(
                    plotOutput('spatial_results_map', width = '100%', height = '100%')
                  ),
@@ -247,6 +248,20 @@ server <- function(input, output, session) {
     
     if(is.null(input$variable_1))return(NULL)
 
+    
+    ## USE THIS TO MAKE THE MULTI-FIGURE PANELS:
+    # ui <- fluidPage(
+    #   uiOutput("moreControls")
+    # )
+    # 
+    # server <- function(input, output) {
+    #   output$moreControls <- renderUI({
+    #     tagList(
+    #       sliderInput("n", "N", 1, 1000, 500),
+    #       textInput("label", "Label")
+    #     )
+    #   })
+    # }
     # output[["binning_panel"]] <- renderUI({
     #   
     #   n <- input[["number_vars"]]
@@ -558,6 +573,19 @@ server <- function(input, output, session) {
     }
   })
   
+  #If raster output selected, make UI for resolution specification.
+  observe({
+    if(input$output_type == "rast_output"){
+      renderUI({
+        textInput(
+          inputId = "raster_res",
+          label = "Raster Resolution (m^2)",
+          value = 1000
+        )
+      })
+    }
+  })
+  
   #Join output values from model to spatial polygon that user has chosen.
   SpatialResults = reactive({
     
@@ -585,15 +613,37 @@ server <- function(input, output, session) {
         mutate(row.number = row_number()) %>% 
         left_join(summed_dat)
     }
+    
+    #If the user asks for raster output...
+    if(input$output_type == "rast_output"){
+      
+      spatial_results_spat = vect(spatial_results %>% st_transform(crs = 3005))
+      spatial_results_res = rast(spatial_results_spat, resolution = as.numeric(input$raster_res))
+      
+      spatial_results = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result")
+    }
+    
     return(spatial_results)
   })
+  
   
   output$spatial_results_table = renderDataTable(SpatialResults())
   
   output$spatial_results_map = renderPlot({
-    ggplot() +
-      geom_sf(data = SpatialResults(), aes(fill = mean_result)) + 
-      geom_sf(data = UserDatBinned(), col = "darkgreen")
+    if(input$bin_results == "Yes"){
+      ggplot() +
+        geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result))) + 
+        geom_sf(data = UserDatBinned(), col = "yellow") + 
+        scale_fill_manual(values = c("1" = "#52ad2b",
+                                     "2" = "#db8035",
+                                     "3" = "#e02626")) +
+        labs(fill = "Model Output")
+    }else{
+      ggplot() +
+        geom_sf(data = SpatialResults(), aes(fill = mean_result)) + 
+        geom_sf(data = UserDatBinned(), col = "yellow") + 
+        labs(fill = "Model Output")
+    }
   },
   width = 700, 
   height = 500
