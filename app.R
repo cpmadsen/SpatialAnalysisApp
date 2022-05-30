@@ -82,8 +82,9 @@ ui <- fluidPage(
                  fluidRow(
                    actionButton(inputId = "start_cleaning", "Start Cleaning Data"),
                    actionButton(inputId = "finalize_binning", "Finish Binning Data"),
-                   verbatimTextOutput('selectedcolumns')
+                   actionButton(inputId = "restart_cleaning", "Restart Cleaning"),
                    ),
+                 #uiOutput('binning_panel'),
                  column(3,
                         inputPanel(
                           tags$div(id = 'variable_filters')
@@ -220,7 +221,7 @@ server <- function(input, output, session) {
   output$data_preview <- renderDataTable(UserDat()[1:5,])
   
   #Once the user has uploaded their dataset, we need to update the first variable selector drop-down
-  #with the column names of that dataset.
+  #with the column names of that dataset.F
   observeEvent(input$user_data, {
     updateSelectInput("variable_1", session = session,
                       choices = names(UserDat()))
@@ -240,21 +241,64 @@ server <- function(input, output, session) {
     selected_vars
   })
 
-  output$selectedcolumns = renderText(SelectedColumns())
-  
   #Render the data filtering and binning options for each selected variable,
   # once the user clicks on the "start cleaning" button.
   observeEvent(input$start_cleaning, {
     
     if(is.null(input$variable_1))return(NULL)
 
+    # output[["binning_panel"]] <- renderUI({
+    #   
+    #   n <- input[["number_vars"]]
+    #   
+    #   selectors <- lapply(1:n, function(i){
+    #     
+    #   list_of_UI_elements = list(
+    #       ## 
+    #       sliderInput(
+    #       inputId = paste0("slider_",i),
+    #       label = paste0("Filter ",variable_name),
+    #       value = c(min(UserDat()[[variable_name]]),
+    #                 max(UserDat()[[variable_name]])),
+    #       min = min(UserDat()[[variable_name]]),
+    #       max = max(UserDat()[[variable_name]]),
+    #       width = "200%"),
+    #       ## Binning method selections.
+    #       selectInput(
+    #         inputId = paste0("bin_",i),
+    #         label = paste0("Bin ",variable_name),
+    #         choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
+    #         width = "150%"
+    #       ),
+    #       ## Histogram with bins visualized.
+    #       renderPlot(
+    #         UserDatBinned() %>% 
+    #           ggplot() +
+    #           geom_histogram(aes(x = !!sym(variable_name), fill = as.character(!!sym(paste0(variable_name,"_binned"))))) + 
+    #           #geom_vline(xintercept = variable_breaks) +
+    #           theme_minimal() +
+    #           theme(legend.position = "none",
+    #                 text = element_text(size = 20)) + 
+    #           scale_fill_brewer(palette = "Dark2"),
+    #         width = 500, height = 200
+    #       )
+    #   )
+    #   
+    #   return(list_of_UI_elements)
+    #   })
+    #     
+    #   do.call(function(...){
+    #     box(..., width = 2, status = "primary")
+    #   }, selectors)
+    # })
+    
     for(i in 1:input$number_vars){
 
     #Make filter UI (range selector)
       id <- paste0('variable_filter_', i)
 
       variable_name = input[[paste0("variable_", i)]]
-      
+
       insertUI(selector = '#variable_filters',
                ui = tags$div(tags$p(
                  sliderInput(
@@ -264,17 +308,20 @@ server <- function(input, output, session) {
                              max(UserDat()[[variable_name]])),
                    min = min(UserDat()[[variable_name]]),
                    max = max(UserDat()[[variable_name]]),
+                   sep = "",
+                   #If the range of the variable in question is more than 6, make steps size of 1.
+                   step = ifelse(max(UserDat()[[variable_name]]) - min(UserDat()[[variable_name]]),1,NULL),
                    width = "200%"
                  )),
                  id = id))
     }
-    
+
     #Make binning selector (drop down)
     for(i in 1:input$number_vars){
       id <- paste0('variable_bin_', i)
-      
+
       variable_name = input[[paste0("variable_", i)]]
-      
+
       insertUI(selector = '#variable_bins',
                ui = tags$div(tags$p(
                  selectInput(
@@ -284,27 +331,27 @@ server <- function(input, output, session) {
                    width = "150%"
                  )),
                  id = id))
-      
+
     }
-    
+
     #Make histograms that show, for each variable, the result of the binning style.
     for(i in 1:input$number_vars){
       id <- paste0('variable_histogram_', i)
-      
+
       local({
-        
+
         variable_name = input[[paste0("variable_", i)]]
-        
+
         insertUI(selector = '#variable_histograms',
                  ui = tags$div(tags$p(
                    renderPlot(
-                     UserDatBinned() %>% 
+                     UserDatBinned() %>%
                        ggplot() +
-                       geom_histogram(aes(x = !!sym(variable_name), fill = as.character(!!sym(paste0(variable_name,"_binned"))))) + 
+                       geom_histogram(aes(x = !!sym(variable_name), fill = as.character(!!sym(paste0(variable_name,"_binned"))))) +
                        #geom_vline(xintercept = variable_breaks) +
                        theme_minimal() +
                        theme(legend.position = "none",
-                             text = element_text(size = 20)) + 
+                             text = element_text(size = 20)) +
                        scale_fill_brewer(palette = "Dark2"),
                      width = 500, height = 200
                    )),
@@ -313,12 +360,19 @@ server <- function(input, output, session) {
     }
   })
   
-  #Take each variable from the user's dataset and apply the range filters. Save
-  # the result as a reactive expression.
+  #If the user clicks the "restart binning" button:
+  observeEvent(input$restart_cleaning, {
+    
+  })
+  
+  #Take each variable from the user's dataset and apply the range filters.
+  #Keep only selected variables. 
+  #Save the result as a reactive expression.
   UserDatFiltered = reactive({
     if(is.null(input$slider_1))return(NULL)
     
-    dat = UserDat()
+    dat = UserDat() %>% 
+      select(SelectedColumns())
     
     #Cycle through all of the variable inputs, applying filters as you go.
     for(i in 1:input$number_vars){
@@ -328,6 +382,12 @@ server <- function(input, output, session) {
       dat = dat %>% 
         dplyr::filter(.[[variable_name]] >= input[[paste0("slider_",i)]][1],
                       .[[variable_name]] < input[[paste0("slider_",i)]][2])
+      
+      #If this variable is numeric, just keep up to 3 decimal places...
+      if(is.numeric(dat[[variable_name]])){
+        dat = dat %>% 
+          mutate(!!sym(variable_name) := round(!!sym(variable_name),3))
+      }
     }
     
     dat
@@ -366,7 +426,8 @@ server <- function(input, output, session) {
     return(dat)
   })
   
-  output$bin_check = renderDataTable(UserDatBinned())
+  output$bin_check = renderDataTable(UserDatBinned() %>% 
+                                       st_drop_geometry())
   
   # ---------------------------------------- # 
   #          Model Specification             #
@@ -512,8 +573,8 @@ server <- function(input, output, session) {
       left_join(summed_dat)
     }
     
+    #If selected User Polygon as spatial scale...
     if(input$spat_scale == "user_poly_scale"){
-      #If selected User Polygon as spatial scale...
       summed_dat = UserDatSummed() %>%
         st_join(UserScalePoly() %>% mutate(row.number = row_number())) %>%
         st_drop_geometry() %>%
@@ -521,6 +582,7 @@ server <- function(input, output, session) {
         summarise(mean_result = mean(result,na.rm=T))
       
       spatial_results = UserScalePoly() %>%
+        mutate(row.number = row_number()) %>% 
         left_join(summed_dat)
     }
     return(spatial_results)
