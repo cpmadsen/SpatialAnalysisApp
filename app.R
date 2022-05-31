@@ -43,6 +43,9 @@ ui <- fluidPage(
       inputPanel(
         align = "center",
         h2("Risk Model Tool"),
+        #HTML('<p><img src="robot-head.png"/></p>'),
+        img(src="robot-head.png", width = '100px'),
+        h3("Chris 2.0"),
         hr(style = "border-top: 4px solid #980028;"),
         h4("Step 1. Upload your dataset, \nselect variables"),
         hr(style = "border-top: 1px solid #980028; opacity: 0"),
@@ -93,10 +96,6 @@ ui <- fluidPage(
                  h3("Model:"),
                  uiOutput('modeltext'),
                  tags$div(id = "variable_coefs"),
-                 radioButtons(inputId = "bin_results",
-                              label = "Bin model results into 3 bins?",
-                              choices = c("Yes","No"),
-                              selected = "No"),
                  hr(),
                  hr(),
                  h3("Model Output"),
@@ -114,13 +113,23 @@ ui <- fluidPage(
                               inputId = "raster_res",
                               label = "Raster Resolution (m^2)",
                               value = 1000
-                            )
+                            ),
+                            radioButtons(inputId = "bin_results",
+                                         label = "Bin model results into 3 bins?",
+                                         choices = c("Yes","No"),
+                                         selected = "No")
                  ),
-                 inputPanel(
-                          plotOutput('spatial_results_map', width = '100%', height = '100%')
+                 tabsetPanel(
+                   tabPanel("Maps",
+                     plotOutput('spatial_results_map', width = '100%', height = '100%')
+                   ),
+                   tabPanel("Table",
+                     dataTableOutput('spatial_results_table')
+                   )
                  ),
                  inputPanel(downloadButton('downloadData',"Download Shapefile"),
-                            downloadButton('downloadDataRaster',"Download Raster")
+                            downloadButton('downloadDataRaster',"Download Raster"),
+                            downloadButton('downloadDataTable',"Download Table")
                             )
         )
       ),
@@ -531,6 +540,11 @@ server <- function(input, output, session) {
         left_join(summed_dat)
     }
     
+    if(input$bin_results == "Yes"){
+      spatial_results = spatial_results %>% 
+        mutate(mean_result_binned = as.numeric(cut(mean_result,3)))
+    }
+    
     return(spatial_results)
   })
   
@@ -540,53 +554,21 @@ server <- function(input, output, session) {
     spatial_results_spat = terra::vect(SpatialResults() %>% sf::st_transform(crs = 3005))
     spatial_results_res = terra::rast(spatial_results_spat, resolution = as.numeric(input$raster_res))
     
-    spatial_results_rast = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result")
+    if(input$bin_results == "Yes"){
+      spatial_results_rast = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result_binned")
+    }else{
+      spatial_results_rast = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result")
+    }
     
     return(spatial_results_rast)
   })
   
   output$spatial_results_table = renderDataTable(SpatialResults())
   
-  # output$spatial_results_map = renderPlot({
-  #   if(input$bin_results == "Yes"){
-  #     ggplot() +
-  #       geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result))) + 
-  #       geom_sf(data = UserDatBinned(), col = "yellow") + 
-  #       scale_fill_manual(values = c("1" = "#52ad2b",
-  #                                    "2" = "#db8035",
-  #                                    "3" = "#e02626")) +
-  #       labs(fill = "Model Output")
-  #   }else{
-  #     ggplot() +
-  #       geom_sf(data = SpatialResults(), aes(fill = mean_result)) + 
-  #       geom_sf(data = UserDatBinned(), col = "yellow") + 
-  #       labs(fill = "Model Output")
-  #   }
-  # }, width = 650, 
-  # height = 500
-  # )
-  # 
-  # output$spatial_results_map_r = renderPlot({
-  #   if(input$bin_results == "Yes"){
-  #     gplot(SpatialResultsRast()) +
-  #       geom_tile(aes(fill = as.factor(value))) + 
-  #       scale_fill_manual(values = c("1" = "#52ad2b",
-  #                                    "2" = "#db8035",
-  #                                    "3" = "#e02626")) +
-  #       labs(fill = "Model Output")
-  #   }else{
-  #     gplot(SpatialResultsRast()) +
-  #       geom_tile(aes(fill = value)) + 
-  #       labs(fill = "Model Output")
-  #   }
-  # },
-  # width = 650, 
-  # height = 500)
-  
   output$spatial_results_map = renderPlot({
     poly_map = if(input$bin_results == "Yes"){
       ggplot() +
-        geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result))) +
+        geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result_binned))) +
         geom_sf(data = UserDatBinned(), col = "yellow") +
         scale_fill_manual(values = c("1" = "#52ad2b",
                                      "2" = "#db8035",
@@ -605,10 +587,10 @@ server <- function(input, output, session) {
         geom_tile(aes(fill = as.factor(value))) +
         scale_fill_manual(values = c("1" = "#52ad2b",
                                      "2" = "#db8035",
-                                     "3" = "#e02626")) +
+                                     "3" = "#e02626"),
+                          na.value = NA) +
         labs(fill = "Model Output") + 
-      theme_minimal() + 
-      scale_fill_discrete(na.value = NA)
+      theme_minimal()
     }else{
       gplot(SpatialResultsRast()) +
         geom_tile(aes(fill = value)) +
@@ -622,9 +604,18 @@ server <- function(input, output, session) {
   width = 1300,
   height = 500)
   
+  output$downloadDataTable <- downloadHandler(
+    filename = function() {
+      paste0('Spatial_Analysis_App_Output_Table_', Sys.Date(), '.gpkg')
+    },
+    content = function(con) {
+      openxlsx::write.xlsx(SpatialResults() %>% st_drop_geometry(), con)
+    }
+  )
+  
   output$downloadData <- downloadHandler(
       filename = function() {
-        paste0('Spatial_Analysis_App_Output_', Sys.Date(), '.gpkg')
+        paste0('Spatial_Analysis_App_Output_Vector_', Sys.Date(), '.gpkg')
       },
       content = function(con) {
         write_sf(SpatialResults(), con)
