@@ -1,12 +1,15 @@
 library(shiny)
 library(shinydashboard)
-library(tidyverse)
-library(sf)
-library(leaflet)
-library(leaflet.extras)
-library(DT)
-library(terra)
-library(readxl)
+library(tidyverse) #For data manipulation and piping.
+library(sf) #For vector spatial functions.
+# library(leaflet)
+# library(leaflet.extras)
+library(DT) #For interactive data tables.
+library(terra) #For raster functions.
+library(readxl) #To read in excel files.
+library(ggthemes) #For map themes.
+library(ggpubr) #For ggarrange of final maps.
+library(rasterVis) #To visualize the rasters.
 library(classInt); library(BAMMtools) #For binning
 
 rm(list = ls())
@@ -65,6 +68,7 @@ ui <- fluidPage(
                                     accept = c(".zip",".gpkg","xlsx"),
                                     placeholder = "Upload file (zip, gpkg, or xlsx"),
                         ),
+                        h5("Snapshot of your data."),
                         inputPanel(
                           dataTableOutput('data_preview')
                         )
@@ -80,24 +84,7 @@ ui <- fluidPage(
                         )
                  )),
         tabPanel("Data Cleaning + Binning",
-                 fluidRow(
-                   actionButton(inputId = "start_cleaning", "Start Cleaning Data"),
-                   actionButton(inputId = "restart_cleaning", "Restart Cleaning"),
-                   ),
-                 #uiOutput('binning_panel'),
-                 column(3,
-                        inputPanel(
-                          tags$div(id = 'variable_filters')
-                        )
-                 ),
-                 column(3,
-                        inputPanel(
-                          tags$div(id = 'variable_bins')
-                        )),
-                 column(6,
-                        inputPanel(
-                          tags$div(id = 'variable_histograms')
-                        )),
+                 uiOutput("binning_panel"),
                  fluidRow(
                    dataTableOutput('bin_check')
                  )
@@ -123,15 +110,17 @@ ui <- fluidPage(
                             fileInput(inputId = "user_scale_poly", label = "Your Polygon(s)",
                                       accept = c(".zip",".gpkg","xlsx"),
                                       placeholder = "Upload file (zip, gpkg, or xlsx")),
-                 inputPanel(selectInput("output_type", label = "Output Type",
-                                        choices = c("Polygon/Vector" = "vec_output",
-                                                    "Raster" = "rast_output")),
-                            uiOutput('raster_res')),
-                 inputPanel(
-                   plotOutput('spatial_results_map', width = '100%', height = '100%')
+                 inputPanel(textInput(
+                              inputId = "raster_res",
+                              label = "Raster Resolution (m^2)",
+                              value = 1000
+                            )
                  ),
-                 inputPanel(h3("Download"),
-                            downloadButton('downloadData',"Download Shapefile with results")
+                 inputPanel(
+                          plotOutput('spatial_results_map', width = '100%', height = '100%')
+                 ),
+                 inputPanel(downloadButton('downloadData',"Download Shapefile"),
+                            downloadButton('downloadDataRaster',"Download Raster")
                             )
         )
       ),
@@ -219,7 +208,12 @@ server <- function(input, output, session) {
   })
   
   #Preview table to show user the data they've uploaded.
-  output$data_preview <- renderDataTable(UserDat()[1:5,])
+  output$data_preview <- renderDataTable({
+    if(is.null(input$user_data)) return(NULL)
+
+    UserDat()[1:5,] %>% 
+      mutate_if(is.numeric, ~round(.x,2))
+  })
   
   #Once the user has uploaded their dataset, we need to update the first variable selector drop-down
   #with the column names of that dataset.F
@@ -242,143 +236,76 @@ server <- function(input, output, session) {
     selected_vars
   })
 
-  #Render the data filtering and binning options for each selected variable,
-  # once the user clicks on the "start cleaning" button.
-  observeEvent(input$start_cleaning, {
+  #Render the data filtering and binning options for each selected variable.
+  output$binning_panel <- renderUI({
     
     if(is.null(input$variable_1))return(NULL)
-
     
-    ## USE THIS TO MAKE THE MULTI-FIGURE PANELS:
-    # ui <- fluidPage(
-    #   uiOutput("moreControls")
-    # )
-    # 
-    # server <- function(input, output) {
-    #   output$moreControls <- renderUI({
-    #     tagList(
-    #       sliderInput("n", "N", 1, 1000, 500),
-    #       textInput("label", "Label")
-    #     )
-    #   })
-    # }
-    # output[["binning_panel"]] <- renderUI({
-    #   
-    #   n <- input[["number_vars"]]
-    #   
-    #   selectors <- lapply(1:n, function(i){
-    #     
-    #   list_of_UI_elements = list(
-    #       ## 
-    #       sliderInput(
-    #       inputId = paste0("slider_",i),
-    #       label = paste0("Filter ",variable_name),
-    #       value = c(min(UserDat()[[variable_name]]),
-    #                 max(UserDat()[[variable_name]])),
-    #       min = min(UserDat()[[variable_name]]),
-    #       max = max(UserDat()[[variable_name]]),
-    #       width = "200%"),
-    #       ## Binning method selections.
-    #       selectInput(
-    #         inputId = paste0("bin_",i),
-    #         label = paste0("Bin ",variable_name),
-    #         choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
-    #         width = "150%"
-    #       ),
-    #       ## Histogram with bins visualized.
-    #       renderPlot(
-    #         UserDatBinned() %>% 
-    #           ggplot() +
-    #           geom_histogram(aes(x = !!sym(variable_name), fill = as.character(!!sym(paste0(variable_name,"_binned"))))) + 
-    #           #geom_vline(xintercept = variable_breaks) +
-    #           theme_minimal() +
-    #           theme(legend.position = "none",
-    #                 text = element_text(size = 20)) + 
-    #           scale_fill_brewer(palette = "Dark2"),
-    #         width = 500, height = 200
-    #       )
-    #   )
-    #   
-    #   return(list_of_UI_elements)
-    #   })
-    #     
-    #   do.call(function(...){
-    #     box(..., width = 2, status = "primary")
-    #   }, selectors)
-    # })
+    binning_panel_taglist = tagList()
     
     for(i in 1:input$number_vars){
-
-    #Make filter UI (range selector)
-      id <- paste0('variable_filter_', i)
-
-      variable_name = input[[paste0("variable_", i)]]
-
-      insertUI(selector = '#variable_filters',
-               ui = tags$div(tags$p(
-                 sliderInput(
-                   inputId = paste0("slider_",i),
-                   label = paste0("Filter ",variable_name),
-                   value = c(min(UserDat()[[variable_name]]),
-                             max(UserDat()[[variable_name]])),
-                   min = min(UserDat()[[variable_name]]),
-                   max = max(UserDat()[[variable_name]]),
-                   sep = "",
-                   #If the range of the variable in question is more than 6, make steps size of 1.
-                   step = ifelse(max(UserDat()[[variable_name]]) - min(UserDat()[[variable_name]]),1,NULL),
-                   width = "200%"
-                 )),
-                 id = id))
-    }
-
-    #Make binning selector (drop down)
-    for(i in 1:input$number_vars){
-      id <- paste0('variable_bin_', i)
-
-      variable_name = input[[paste0("variable_", i)]]
-
-      insertUI(selector = '#variable_bins',
-               ui = tags$div(tags$p(
-                 selectInput(
-                   inputId = paste0("bin_",i),
-                   label = paste0("Bin ",variable_name),
-                   choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
-                   width = "150%"
-                 )),
-                 id = id))
-
-    }
-
-    #Make histograms that show, for each variable, the result of the binning style.
-    for(i in 1:input$number_vars){
-      id <- paste0('variable_histogram_', i)
-
+      
+      # Need local so that each item gets its own number. Without it, the value
+      # of i in the renderPlot() will be the same across all instances, because
+      # of when the expression is evaluated.
       local({
-
+        
+        #variable name.
         variable_name = input[[paste0("variable_", i)]]
-
-        insertUI(selector = '#variable_histograms',
-                 ui = tags$div(tags$p(
-                   renderPlot(
-                     UserDatBinned() %>%
-                       ggplot() +
-                       geom_histogram(aes(x = !!sym(variable_name), fill = as.character(!!sym(paste0(variable_name,"_binned"))))) +
-                       #geom_vline(xintercept = variable_breaks) +
-                       theme_minimal() +
-                       theme(legend.position = "none",
-                             text = element_text(size = 20)) +
-                       scale_fill_brewer(palette = "Dark2"),
-                     width = 500, height = 200
-                   )),
-                   id = id))
+        
+        tags_to_add <<- tagList(
+            h3(str_to_title(variable_name)),
+            fluidRow(
+              column(width = 3,
+                     sliderInput(
+                       inputId = paste0("slider_",i),
+                       label = paste0("Filter ",variable_name),
+                       value = c(min(UserDat()[[variable_name]]),
+                                 max(UserDat()[[variable_name]])),
+                       min = min(UserDat()[[variable_name]]),
+                       max = max(UserDat()[[variable_name]]),
+                       sep = "",
+                       #If the range of the variable in question is more than 6, make steps size of 1.
+                       step = ifelse(max(UserDat()[[variable_name]]) - min(UserDat()[[variable_name]]),1,NULL),
+                       width = "200%"
+                     )
+              ), #column end.
+              column(width = 3,
+                     selectInput(
+                       inputId = paste0("bin_",i),
+                       label = paste0("Bin ",variable_name),
+                       choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
+                       width = "150%"
+                     )
+              ), #column end.
+              column(width = 6,
+                     renderPlot(
+                       UserDatBinned() %>%
+                         ggplot() +
+                         geom_histogram(aes(x = !!sym(variable_name), 
+                                            fill = as.character(!!sym(paste0(variable_name,"_binned"))))) +
+                         theme_minimal() +
+                         theme(legend.position = "none",
+                               text = element_text(size = 20)) +
+                         scale_fill_brewer(palette = "Dark2"),
+                       width = 500, height = 200
+                     )
+              ) #column end.
+            ), #fluidRow end.
+            hr(style = "border-top: 1px solid #980028"),
+        )
       })
+  
+  binning_panel_taglist = tagList(
+    binning_panel_taglist,
+    tags_to_add
+  )
     }
+    
+    return(binning_panel_taglist)
   })
   
-  #If the user clicks the "restart binning" button:
-  observeEvent(input$restart_cleaning, {
-    
-  })
+
   
   #Take each variable from the user's dataset and apply the range filters.
   #Keep only selected variables. 
@@ -573,19 +500,6 @@ server <- function(input, output, session) {
     }
   })
   
-  #If raster output selected, make UI for resolution specification.
-  observe({
-    if(input$output_type == "rast_output"){
-      renderUI({
-        textInput(
-          inputId = "raster_res",
-          label = "Raster Resolution (m^2)",
-          value = 1000
-        )
-      })
-    }
-  })
-  
   #Join output values from model to spatial polygon that user has chosen.
   SpatialResults = reactive({
     
@@ -603,51 +517,110 @@ server <- function(input, output, session) {
     
     #If selected User Polygon as spatial scale...
     if(input$spat_scale == "user_poly_scale"){
+      
+      user_poly = UserScalePoly() %>% 
+        mutate(row.number = row_number())
+      
       summed_dat = UserDatSummed() %>%
-        st_join(UserScalePoly() %>% mutate(row.number = row_number())) %>%
+        st_join(user_poly) %>%
         st_drop_geometry() %>%
         group_by(row.number) %>%
         summarise(mean_result = mean(result,na.rm=T))
       
-      spatial_results = UserScalePoly() %>%
-        mutate(row.number = row_number()) %>% 
+      spatial_results = user_poly %>% 
         left_join(summed_dat)
-    }
-    
-    #If the user asks for raster output...
-    if(input$output_type == "rast_output"){
-      
-      spatial_results_spat = vect(spatial_results %>% st_transform(crs = 3005))
-      spatial_results_res = rast(spatial_results_spat, resolution = as.numeric(input$raster_res))
-      
-      spatial_results = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result")
     }
     
     return(spatial_results)
   })
   
+  #Rasterize spatial results.
+  SpatialResultsRast = reactive({
+    
+    spatial_results_spat = terra::vect(SpatialResults() %>% sf::st_transform(crs = 3005))
+    spatial_results_res = terra::rast(spatial_results_spat, resolution = as.numeric(input$raster_res))
+    
+    spatial_results_rast = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result")
+    
+    return(spatial_results_rast)
+  })
   
   output$spatial_results_table = renderDataTable(SpatialResults())
   
+  # output$spatial_results_map = renderPlot({
+  #   if(input$bin_results == "Yes"){
+  #     ggplot() +
+  #       geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result))) + 
+  #       geom_sf(data = UserDatBinned(), col = "yellow") + 
+  #       scale_fill_manual(values = c("1" = "#52ad2b",
+  #                                    "2" = "#db8035",
+  #                                    "3" = "#e02626")) +
+  #       labs(fill = "Model Output")
+  #   }else{
+  #     ggplot() +
+  #       geom_sf(data = SpatialResults(), aes(fill = mean_result)) + 
+  #       geom_sf(data = UserDatBinned(), col = "yellow") + 
+  #       labs(fill = "Model Output")
+  #   }
+  # }, width = 650, 
+  # height = 500
+  # )
+  # 
+  # output$spatial_results_map_r = renderPlot({
+  #   if(input$bin_results == "Yes"){
+  #     gplot(SpatialResultsRast()) +
+  #       geom_tile(aes(fill = as.factor(value))) + 
+  #       scale_fill_manual(values = c("1" = "#52ad2b",
+  #                                    "2" = "#db8035",
+  #                                    "3" = "#e02626")) +
+  #       labs(fill = "Model Output")
+  #   }else{
+  #     gplot(SpatialResultsRast()) +
+  #       geom_tile(aes(fill = value)) + 
+  #       labs(fill = "Model Output")
+  #   }
+  # },
+  # width = 650, 
+  # height = 500)
+  
   output$spatial_results_map = renderPlot({
-    if(input$bin_results == "Yes"){
+    poly_map = if(input$bin_results == "Yes"){
       ggplot() +
-        geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result))) + 
-        geom_sf(data = UserDatBinned(), col = "yellow") + 
+        geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result))) +
+        geom_sf(data = UserDatBinned(), col = "yellow") +
         scale_fill_manual(values = c("1" = "#52ad2b",
                                      "2" = "#db8035",
                                      "3" = "#e02626")) +
-        labs(fill = "Model Output")
+        labs(fill = "Model Output") + 
+        theme_minimal()
     }else{
       ggplot() +
-        geom_sf(data = SpatialResults(), aes(fill = mean_result)) + 
-        geom_sf(data = UserDatBinned(), col = "yellow") + 
+        geom_sf(data = SpatialResults(), aes(fill = mean_result)) +
+        geom_sf(data = UserDatBinned(), col = "yellow") +
         labs(fill = "Model Output")
     }
+
+  rast_map = if(input$bin_results == "Yes"){
+      gplot(SpatialResultsRast()) +
+        geom_tile(aes(fill = as.factor(value))) +
+        scale_fill_manual(values = c("1" = "#52ad2b",
+                                     "2" = "#db8035",
+                                     "3" = "#e02626")) +
+        labs(fill = "Model Output") + 
+      theme_minimal() + 
+      scale_fill_discrete(na.value = NA)
+    }else{
+      gplot(SpatialResultsRast()) +
+        geom_tile(aes(fill = value)) +
+        labs(fill = "Model Output") + 
+        theme_minimal() + 
+        scale_fill_continuous(na.value = NA)
+    }
+  
+  ggarrange(poly_map, rast_map, ncol = 2)
   },
-  width = 700, 
-  height = 500
-  )
+  width = 1300,
+  height = 500)
   
   output$downloadData <- downloadHandler(
       filename = function() {
@@ -657,6 +630,15 @@ server <- function(input, output, session) {
         write_sf(SpatialResults(), con)
       }
     )
+  
+  output$downloadDataRaster <- downloadHandler(
+    filename = function() {
+      paste0('Spatial_Analysis_App_Output_Raster_', Sys.Date(), '.tiff')
+    },
+    content = function(con) {
+      terra::writeRaster(SpatialResultsRast(), con)
+    }
+  )
 }
 
 shinyApp(ui = ui, server = server)
