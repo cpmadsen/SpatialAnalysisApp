@@ -11,6 +11,7 @@ library(ggthemes) #For map themes.
 library(ggpubr) #For ggarrange of final maps.
 library(rasterVis) #To visualize the rasters.
 library(classInt); library(BAMMtools) #For binning
+library(sortable) #Allows drag-and-drop input in Shiny apps
 
 rm(list = ls())
 
@@ -73,6 +74,7 @@ ui <- fluidPage(
                         ),
                         h5("Snapshot of your data."),
                         inputPanel(
+                          uiOutput('cols_checkboxes'),
                           dataTableOutput('data_preview')
                         )
                  ),
@@ -84,6 +86,9 @@ ui <- fluidPage(
                           ),
                         inputPanel(
                           tags$div(id = 'variable_selectors')
+                        ),
+                        inputPanel(
+                          uiOutput('factorizing')
                         )
                  )),
         tabPanel("Data Cleaning + Binning",
@@ -216,25 +221,27 @@ server <- function(input, output, session) {
       }
   })
   
-  #Preview table to show user the data they've uploaded.
-  output$data_preview <- renderDataTable({
-    if(is.null(input$user_data)) return(NULL)
-
-    UserDat()[1:5,] %>% 
-      mutate_if(is.numeric, ~round(.x,2))
-  })
-  
   #Once the user has uploaded their dataset, we need to update the first variable selector drop-down
-  #with the column names of that dataset.F
+  #with the column names of that dataset.
   observeEvent(input$user_data, {
     updateSelectInput("variable_1", session = session,
                       choices = names(UserDat()))
   })
   
-  # ---------------------------------------- # 
-  #             Data Cleaning                #
-  # ---------------------------------------- # 
-  #----------------------------------------------------------------------------
+  #Preview table to show user the data they've uploaded.
+  output$data_preview <- renderDataTable({
+    if(is.null(input$user_data)) return(NULL)
+
+    UserDat()[1:5,] %>% 
+      select(all_of(input$show_preview_cols)) %>% 
+      mutate_if(is.numeric, ~round(.x,2))
+  })
+  
+  #Which columns of the preview data will we display? Up to the user.
+  output$cols_checkboxes = renderUI(
+    checkboxGroupInput("show_preview_cols", "Columns in data to preview:",
+                       names(UserDat()), selected = names(UserDat())[1:5])
+  )
   
   # Get a reactive vector of column names that have been selected.
   SelectedColumns = reactive({
@@ -244,7 +251,80 @@ server <- function(input, output, session) {
     }
     selected_vars
   })
+  
+  #For any chosen variables that are characters, we need a way to convert to numbers.
+  #Render a UI element for the user to choose factor levels.
+  output$factorizing = renderUI({
 
+    #If no variable has been selected yet, skip this for now...
+    if(is.null(input$variable_1))return(NULL)
+    
+    #Initialize tag list for this multipart UI element.
+    factorizing_taglist = tagList()
+    
+    #For each variable that is NOT numeric, add a UI element to the 'factorizing_taglist'
+    for(i in 1:input$number_vars){
+      #Get variable name for this round of the loop...
+      variable_name = input[[paste0("variable_", i)]]
+      
+      #Is it categorical (i.e. NOT a number)? If so, do the following.
+      if(is.character(UserDat()[[variable_name]]) == TRUE){
+
+        tags_to_add = tagList(
+          h4(str_to_title(variable_name)),
+            rank_list(
+              input_id = paste0("factor_list_",i),
+              text = "Sort Categorical Data - high to low (NA are removed)",
+              labels = na.omit(unique(UserDat() %>% pull(!!sym(variable_name))))
+            )
+        )
+        
+        factorizing_taglist = tagList(factorizing_taglist,
+                                      tags_to_add)
+      }
+    }
+    return(factorizing_taglist)
+  })
+
+  # Take the sorting the user has applied to the categorical variable(s)
+  #    and apply it to make dummy variable(s)
+  UserDatSelected = reactive({
+    if(is.null(input$variable_1))return(NULL)
+    
+    #Bring in reactive user dataset that they have uploaded.
+    dat = UserDat()
+    
+    # If the variable needs to be converted from a character category to a number,
+    # use the ordering the user has provided with the drag-and-drop UI element.
+    # If no factorization needed for a given variable, keep the variable as is.
+    for(i in 1:input$number_vars){
+      
+      #If we have some info from the factorization drag-and-drop for variable i...
+      if(is.null(input[[paste0("factor_list_",i)]]) == FALSE){
+        
+        #Grab variable name and sorting heuristic.
+        variable_name = input[[paste0("variable_",i)]]
+        variable_sorter = c(input[[paste0("factor_list_",i)]],"0")
+        
+        #Modify variable selected by loop: convert character to ordered factor (numeric)
+        dat = dat %>% 
+          #Replace NA with 0...
+          mutate(!!sym(variable_name) := replace(!!sym(variable_name), is.na(!!sym(variable_name)), "0")) %>%
+          #Convert variable i to a numeric ordered factor.
+          mutate(!!sym(variable_name) := as.numeric(factor(!!sym(variable_name),
+                                                           levels = variable_sorter
+                                                           )))
+      }
+    }
+    
+    dat
+  })
+
+  # ---------------------------------------- # 
+  #             Data Cleaning                #
+  # ---------------------------------------- # 
+  #----------------------------------------------------------------------------
+  
   #Render the data filtering and binning options for each selected variable.
   output$binning_panel <- renderUI({
     
@@ -269,13 +349,13 @@ server <- function(input, output, session) {
                      sliderInput(
                        inputId = paste0("slider_",i),
                        label = paste0("Filter ",variable_name),
-                       value = c(min(UserDat()[[variable_name]]),
-                                 max(UserDat()[[variable_name]])),
-                       min = min(UserDat()[[variable_name]]),
-                       max = max(UserDat()[[variable_name]]),
+                       value = c(min(UserDatSelected()[[variable_name]]),
+                                 max(UserDatSelected()[[variable_name]])),
+                       min = min(UserDatSelected()[[variable_name]]),
+                       max = max(UserDatSelected()[[variable_name]]),
                        sep = "",
                        #If the range of the variable in question is more than 6, make steps size of 1.
-                       step = ifelse(max(UserDat()[[variable_name]]) - min(UserDat()[[variable_name]]),1,NULL),
+                       step = ifelse(max(UserDatSelected()[[variable_name]]) - min(UserDatSelected()[[variable_name]]),1,NULL),
                        width = "200%"
                      )
               ), #column end.
@@ -322,7 +402,7 @@ server <- function(input, output, session) {
   UserDatFiltered = reactive({
     if(is.null(input$slider_1))return(NULL)
     
-    dat = UserDat() %>% 
+    dat = UserDatSelected() %>% 
       select(SelectedColumns())
     
     #Cycle through all of the variable inputs, applying filters as you go.
@@ -332,7 +412,7 @@ server <- function(input, output, session) {
       
       dat = dat %>% 
         dplyr::filter(.[[variable_name]] >= input[[paste0("slider_",i)]][1],
-                      .[[variable_name]] < input[[paste0("slider_",i)]][2])
+                      .[[variable_name]] <= input[[paste0("slider_",i)]][2])
       
       #If this variable is numeric, just keep up to 3 decimal places...
       if(is.numeric(dat[[variable_name]])){
