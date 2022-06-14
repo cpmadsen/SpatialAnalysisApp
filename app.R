@@ -94,7 +94,8 @@ ui <- fluidPage(
         tabPanel("Data Cleaning + Binning",
                  uiOutput("binning_panel"),
                  fluidRow(
-                   dataTableOutput('bin_check')
+                   dataTableOutput('bin_check'),
+                   textOutput('label_check')
                  )
                  ),
         tabPanel("Model Specification",
@@ -296,7 +297,7 @@ server <- function(input, output, session) {
     
     # If the variable needs to be converted from a character category to a number,
     # use the ordering the user has provided with the drag-and-drop UI element.
-    # If no factorization needed for a given variable, keep the variable as is.
+    # If no factorization is needed for a given variable, keep the variable as is.
     for(i in 1:input$number_vars){
       
       #If we have some info from the factorization drag-and-drop for variable i...
@@ -304,16 +305,24 @@ server <- function(input, output, session) {
         
         #Grab variable name and sorting heuristic.
         variable_name = input[[paste0("variable_",i)]]
-        variable_sorter = c(input[[paste0("factor_list_",i)]],"0")
+        variable_sorter = c(rev(input[[paste0("factor_list_",i)]]))
+        #variable_sorter = c("Data missing", rev(input[[paste0("factor_list_",i)]]))
         
         #Modify variable selected by loop: convert character to ordered factor (numeric)
         dat = dat %>% 
           #Replace NA with 0...
-          mutate(!!sym(variable_name) := replace(!!sym(variable_name), is.na(!!sym(variable_name)), "0")) %>%
+          #mutate(!!sym(variable_name) := replace(!!sym(variable_name), is.na(!!sym(variable_name)), "Data missing")) %>%
+          #Make new column that will be used as x-axis markers in the histograms of the binning page
+          mutate(!!sym(paste0(variable_name,"_label")) := !!sym(variable_name)) %>% 
           #Convert variable i to a numeric ordered factor.
           mutate(!!sym(variable_name) := as.numeric(factor(!!sym(variable_name),
                                                            levels = variable_sorter
-                                                           )))
+          ))) %>% 
+          #Add the number to the label.
+          mutate(!!sym(paste0(variable_name,"_label")) := paste0(!!sym(paste0(variable_name,"_label")),
+                                                                 " (",
+                                                                 !!sym(variable_name),
+                                                                 ")"))
       }
     }
     
@@ -325,85 +334,29 @@ server <- function(input, output, session) {
   # ---------------------------------------- # 
   #----------------------------------------------------------------------------
   
-  #Render the data filtering and binning options for each selected variable.
-  output$binning_panel <- renderUI({
-    
-    if(is.null(input$variable_1))return(NULL)
-    
-    binning_panel_taglist = tagList()
-    
-    for(i in 1:input$number_vars){
-      
-      # Need local so that each item gets its own number. Without it, the value
-      # of i in the renderPlot() will be the same across all instances, because
-      # of when the expression is evaluated.
-      local({
-        
-        #variable name.
-        variable_name = input[[paste0("variable_", i)]]
-        
-        tags_to_add <<- tagList(
-            h3(str_to_title(variable_name)),
-            fluidRow(
-              column(width = 3,
-                     sliderInput(
-                       inputId = paste0("slider_",i),
-                       label = paste0("Filter ",variable_name),
-                       value = c(min(UserDatSelected()[[variable_name]]),
-                                 max(UserDatSelected()[[variable_name]])),
-                       min = min(UserDatSelected()[[variable_name]]),
-                       max = max(UserDatSelected()[[variable_name]]),
-                       sep = "",
-                       #If the range of the variable in question is more than 6, make steps size of 1.
-                       step = ifelse(max(UserDatSelected()[[variable_name]]) - min(UserDatSelected()[[variable_name]]),1,NULL),
-                       width = "200%"
-                     )
-              ), #column end.
-              column(width = 3,
-                     selectInput(
-                       inputId = paste0("bin_",i),
-                       label = paste0("Bin ",variable_name),
-                       choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
-                       width = "150%"
-                     )
-              ), #column end.
-              column(width = 6,
-                     renderPlot(
-                       UserDatBinned() %>%
-                         ggplot() +
-                         geom_histogram(aes(x = !!sym(variable_name), 
-                                            fill = as.character(!!sym(paste0(variable_name,"_binned"))))) +
-                         theme_minimal() +
-                         theme(legend.position = "none",
-                               text = element_text(size = 20)) +
-                         scale_fill_brewer(palette = "Dark2"),
-                       width = 500, height = 200
-                     )
-              ) #column end.
-            ), #fluidRow end.
-            hr(style = "border-top: 1px solid #980028"),
-        )
-      })
-  
-  binning_panel_taglist = tagList(
-    binning_panel_taglist,
-    tags_to_add
-  )
-    }
-    
-    return(binning_panel_taglist)
-  })
-  
-
-  
   #Take each variable from the user's dataset and apply the range filters.
   #Keep only selected variables. 
   #Save the result as a reactive expression.
   UserDatFiltered = reactive({
     if(is.null(input$slider_1))return(NULL)
     
+    user_selected_columns = SelectedColumns()
+    
+    #If the user has uploaded categorical data that has been turned into an ordered factor,
+    #this section adds the 'label' version of those variables so that the user can see them in the
+    #preview table of the binning section.
+    for(i in 1:input$number_vars){
+      
+      #variable name.
+      variable_name = input[[paste0("variable_", i)]]
+      
+      if(is.null(UserDatSelected()[[paste0(variable_name,"_label")]]) == FALSE){
+        user_selected_columns = c(user_selected_columns, paste0(variable_name,"_label"))
+      }
+    }
+    
     dat = UserDatSelected() %>% 
-      select(SelectedColumns())
+      select(all_of(user_selected_columns))
     
     #Cycle through all of the variable inputs, applying filters as you go.
     for(i in 1:input$number_vars){
@@ -424,7 +377,8 @@ server <- function(input, output, session) {
     dat
   })
   
-  #Bin user data, depending on bin input.
+  #Bin user data, depending on bin input. If the variable in question is an ordered factor, 
+  #  don't bin it.
   UserDatBinned = reactive({
     if(is.null(input$slider_1) | is.null(input$bin_1))return(NULL)
     
@@ -435,15 +389,25 @@ server <- function(input, output, session) {
     #For each of the variables the user has selected from their dataset...
     for(i in 1:length(variables)){
       
+      #If the variable is an ordered factor, don't bin it. Skip to next variable.
+      if(is.null(input[[paste0("factor_list_",i)]]) == FALSE){
+        dat = dat %>% 
+          mutate(!!sym(paste0(variables[i],"_binned")) := !!sym(variables[i]))
+          #mutate(!!sym(variables[i]) := !!sym(paste0(variables[i],"_label"))) %>% 
+          #select(-!!sym(paste0(variables[i],"_label")))
+        next
+      }
+      
       #If user selects "Equal Width Bins" option...
       if(input[[paste0("bin_",i)]] == "Equal Width Bins"){
         dat = dat %>% 
-          mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(cut(!!sym(variables[i]),3)))
+          mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(Hmisc::cut2(!!sym(variables[i]), g = 3)))
       }
       #If user selects "Equal Sample Bins" option...
       if(input[[paste0("bin_",i)]] == "Equal Sample Bins"){
         dat = dat %>% 
-          mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(Hmisc::cut2(!!sym(variables[i]), g = 3)))
+          mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(cut(!!sym(variables[i]),3)))
+        
       }
       #If user selects "Natural Jenks" option...
       if(input[[paste0("bin_",i)]] == "Natural Jenks"){
@@ -457,9 +421,96 @@ server <- function(input, output, session) {
     return(dat)
   })
   
-  output$bin_check = renderDataTable(UserDatBinned() %>% 
+  output$bin_check = renderDataTable(UserDatBinned() %>%
                                        st_drop_geometry())
   
+  
+  #Render the data filtering and binning options for each selected variable.
+  output$binning_panel <- renderUI({
+    
+    if(is.null(input$variable_1))return(NULL)
+    
+    binning_panel_taglist = tagList()
+    
+    for(i in 1:input$number_vars){
+      
+      # Need local so that each item gets its own number. Without it, the value
+      # of i in the renderPlot() will be the same across all instances, because
+      # of when the expression is evaluated.
+      local({
+        
+        #variable name.
+        variable_name = input[[paste0("variable_", i)]]
+        
+        #Here we create three UI elements for each selected variable:
+        #a. A filtering slider
+        #b. A binning method selector
+        #c. A histogram to show the user the result of their filtering / binning choices
+        tags_to_add <<- tagList(
+            h3(str_to_title(variable_name)),
+            fluidRow(
+              column(width = 3,
+                     sliderInput(
+                       inputId = paste0("slider_",i),
+                       label = paste0("Filter ",variable_name),
+                       value = c(min(na.omit(UserDatSelected()[[variable_name]])),
+                                 max(na.omit(UserDatSelected()[[variable_name]]))),
+                       min = min(na.omit(UserDatSelected()[[variable_name]])),
+                       max = max(na.omit(UserDatSelected()[[variable_name]])),
+                       sep = "",
+                       #If the range of the variable in question is more than 6, make steps size of 1.
+                       step = ifelse(max(UserDatSelected()[[variable_name]]) - min(UserDatSelected()[[variable_name]]),1,NULL),
+                       width = "200%"
+                     )
+              ), #column end.
+              column(width = 3,
+                     selectInput(
+                       inputId = paste0("bin_",i),
+                       label = paste0("Bin ",variable_name),
+                       choices = c("Equal Width Bins","Equal Sample Bins","Natural Jenks"),
+                       width = "150%"
+                     )
+              ), #column end.
+              column(width = 6,
+                     renderPlot({
+                       
+                       #if(is.numeric(UserDatSelected()[[variable_name]]) == FALSE){
+                       #   UserDatBinned() %>%
+                       #     ggplot() + 
+                       #     geom_bar(aes(x = !!sym(paste0(variable_name,"_binned")), 
+                       #                  fill = as.character(!!sym(paste0(variable_name,"_binned"))))) +
+                       #     theme_minimal() +
+                       #     theme(legend.position = "none",
+                       #           text = element_text(size = 20)) +
+                       #     scale_fill_brewer(palette = "Dark2")
+                       # }
+                       
+                       #if(is.numeric(UserDatSelected()[[variable_name]]) == TRUE){
+                         UserDatBinned() %>%
+                           ggplot() +
+                             geom_histogram(aes(x = !!sym(variable_name), 
+                                                fill = as.character(!!sym(paste0(variable_name,"_binned"))))) +
+                           theme_minimal() +
+                           theme(legend.position = "none",
+                                 text = element_text(size = 20)) +
+                           scale_fill_brewer(palette = "Dark2")
+                       #}
+                     })
+              ) #column end.
+            ), #fluidRow end.
+            hr(style = "border-top: 1px solid #980028"),
+        )
+      })
+  
+  binning_panel_taglist = tagList(
+    binning_panel_taglist,
+    tags_to_add
+  )
+    }
+    
+    return(binning_panel_taglist)
+  })
+
   # ---------------------------------------- # 
   #          Model Specification             #
   # ---------------------------------------- # 
