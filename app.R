@@ -101,6 +101,7 @@ ui <- fluidPage(
         tabPanel("Model Specification",
                  h3("Model:"),
                  uiOutput('modeltext'),
+                 tags$div(id = 'variable_stressor_models'),
                  tags$div(id = "variable_coefs"),
                  hr(),
                  hr(),
@@ -516,12 +517,41 @@ server <- function(input, output, session) {
   # ---------------------------------------- # 
   #----------------------------------------------------------------------------
   
+  #Render drop-down choices for which stressor response model will be used for the variables.
+  model_choices = c()
+  observeEvent(input$number_vars, {
+    
+    variable_number <- input$number_vars
+    id <- paste0('variable_stressor_model_', variable_number)
+    
+    if (input$number_vars > length(inserted_coefs)) {
+      insertUI(selector = '#variable_stressor_models',
+               ui = tags$div(tags$p(
+                 selectInput(
+                   inputId = paste0("variable_stressor_model_",variable_number),
+                   choices = c("Linear" = "linear",
+                               "Hyperbolic" = "hyperbolic",
+                               "Sigmoidal" = "sigmoidal"),
+                   selected = "sigmoidal",
+                   label = paste0("Stressor model for variable ",variable_number),
+                 )),
+                 id = id))
+      model_choices <<- c(id, model_choices)
+    }
+    else {
+      inserted_coefs <- sort(inserted_coefs)
+      removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
+      inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
+    }
+  })
+  
   # Render numeric inputs for each variable with which the user can set the coefficient of each covariate.
   inserted_coefs <- c()
   observeEvent(input$number_vars, {
     
     variable_number <- input$number_vars
     id <- paste0('variable_coef_', variable_number)
+    
     if (input$number_vars > length(inserted_coefs)) {
       insertUI(selector = '#variable_coefs',
                ui = tags$div(tags$p(
