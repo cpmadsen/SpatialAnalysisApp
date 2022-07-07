@@ -100,9 +100,15 @@ ui <- fluidPage(
                  ),
         tabPanel("Model Specification",
                  h3("Model:"),
-                 uiOutput('modeltext'),
-                 tags$div(id = 'variable_stressor_models'),
-                 tags$div(id = "variable_coefs"),
+                 uiOutput("modeltext"),
+                 selectInput(inputId = "model_selection_type",
+                             label = "Model Selection Type",
+                             choices = c("Linear Equation" = "lineareq",
+                                         "Stressor Response Function(s)" = "stressor"),
+                             selected = "lineareq"),
+                 uiOutput('model_selection_panel'),
+                 #tags$div(id = 'variable_stressor_models'),
+                 #tags$div(id = "variable_coefs"),
                  hr(),
                  hr(),
                  h3("Model Output"),
@@ -202,23 +208,25 @@ server <- function(input, output, session) {
 
         return(userpoly)
       } else if (str_detect(file_name$datapath, ".xlsx")){
-        #If it's an excel file, read that in.
-        userpoly = read_excel(file_name$datapath)
+        if(str_detect(file_name$datapath, ".xlsx")){
+          userpoly = read_excel(file_name$datapath)
+        }
         
         #If the excel table has lat/lon, use the following chunk.
-        if(str_detect(str_to_lower(names(userpoly)),"(lat|lon)")){
           likely_lon = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "lon(g)?")]
           likely_lat = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "lat")]
           userpoly = st_as_sf(userpoly, coords = c(likely_lon, likely_lat), crs = 4326)
+
+        return(userpoly)
+      } else if(str_detect(file_name$datapath, ".csv")){
+        if(str_detect(file_name$datapath, ".csv")){
+          userpoly = read_csv(file_name$datapath)
         }
-        
-        #If the excel table has BC Albers, use the following chunk.
-        if(str_detect(str_to_lower(names(userpoly)),"bcalber")){
-          likely_easting = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "bcalbers_")]
-          likely_northing = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "bcalbers1")]
-          userpoly = st_as_sf(userpoly, coords = c(likely_easting, likely_northing), crs = 3005)
-        }
-        
+      
+        likely_lon = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "lon(g)?")]
+        likely_lat = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "lat")]
+        userpoly = st_as_sf(userpoly, coords = c(likely_lon, likely_lat), crs = 4326)
+
         return(userpoly)
       }
   })
@@ -399,13 +407,13 @@ server <- function(input, output, session) {
         next
       }
       
-      #If user selects "Equal Width Bins" option...
-      if(input[[paste0("bin_",i)]] == "Equal Width Bins"){
+      #If user selects "Equal Sample Bins" option...
+      if(input[[paste0("bin_",i)]] == "Equal Sample Bins"){
         dat = dat %>% 
           mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(Hmisc::cut2(!!sym(variables[i]), g = 3)))
       }
-      #If user selects "Equal Sample Bins" option...
-      if(input[[paste0("bin_",i)]] == "Equal Sample Bins"){
+      #If user selects "Equal Width Bins" option...
+      if(input[[paste0("bin_",i)]] == "Equal Width Bins"){
         dat = dat %>% 
           mutate(!!sym(paste0(variables[i],"_binned")) := as.numeric(cut(!!sym(variables[i]),3)))
         
@@ -422,8 +430,18 @@ server <- function(input, output, session) {
     return(dat)
   })
   
-  output$bin_check = renderDataTable(UserDatBinned() %>%
-                                       st_drop_geometry())
+  #Render a table for the user to see the effects of their binning choices.
+  output$bin_check = renderDataTable(
+    #If there's a geometry column, drop it.
+    if(!is.na(st_is_longlat(UserDatBinned()))){
+      UserDatBinned() %>%
+        st_drop_geometry()
+    } else {
+      #If not geometry column, just call this reactive object.
+      UserDatBinned()
+    }
+    
+    )
   
   
   #Render the data filtering and binning options for each selected variable.
@@ -517,61 +535,164 @@ server <- function(input, output, session) {
   # ---------------------------------------- # 
   #----------------------------------------------------------------------------
   
-  #Render drop-down choices for which stressor response model will be used for the variables.
-  model_choices = c()
-  observeEvent(input$number_vars, {
+  #Render the model selection UI elements:
+    #1. Drop-down offering three options: sigmoidal, linear, and hyperbolic.
+    #2. Two text entry boxes for model parameters 1 and 2 (detailed below)
+    #3. Little figures to show shape of response curve(s)
+  
+  output$model_selection_panel <- renderUI({
     
-    variable_number <- input$number_vars
-    id <- paste0('variable_stressor_model_', variable_number)
+    if(is.null(input$variable_1))return(NULL)
     
-    if (input$number_vars > length(inserted_coefs)) {
-      insertUI(selector = '#variable_stressor_models',
-               ui = tags$div(tags$p(
-                 selectInput(
-                   inputId = paste0("variable_stressor_model_",variable_number),
-                   choices = c("Linear" = "linear",
-                               "Hyperbolic" = "hyperbolic",
-                               "Sigmoidal" = "sigmoidal"),
-                   selected = "sigmoidal",
-                   label = paste0("Stressor model for variable ",variable_number),
-                 )),
-                 id = id))
-      model_choices <<- c(id, model_choices)
+    if(input$model_selection_type == "lineareq"){
+      
+      model_selection_panel_taglist = tagList()
+      
+      for(i in 1:input$number_vars){
+        
+        #variable name.
+        variable_name = input[[paste0("variable_", i)]]
+        
+        tags_to_add <<- tagList(
+          h3(str_to_title(variable_name)),
+          fluidRow(
+            textInput(
+              inputId = paste0("var_coef_",i),
+              value = 1,
+              label = paste0("Coefficient for variable ",i)
+            )
+          ), #fluidRow end.
+          hr(style = "border-top: 1px solid #980028")
+        )
+  
+        model_selection_panel_taglist = tagList(
+          model_selection_panel_taglist,
+          tags_to_add
+        )
+      }
+      
+      return(model_selection_panel_taglist)
+  
     }
-    else {
-      inserted_coefs <- sort(inserted_coefs)
-      removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
-      inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
+    
+    if(input$model_selection_type == "stressor"){
+      if(is.null(input$variable_1))return(NULL)
+      
+      model_selection_panel_taglist = tagList()
+      
+      for(i in 1:input$number_vars){
+        
+        #dataframe for plotting response curves.
+        Plot_DF = reactive({
+          #Sigmoidal...
+          if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
+            plot_df = data.frame(value = rnorm(100, mean = as.numeric(input[[paste0("variable_coef_1_",i)]]), 
+                                               sd = as.numeric(input[[paste0("variable_coef_2_",i)]]))) %>%
+              mutate(y = -value^2 + value + 1)
+          }
+          
+          #Hyperbolic...
+          if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
+            plot_df = data.frame(value = rnorm(100, mean = 1, 
+                                               sd = 1)) %>%
+              mutate(y = -(as.numeric(input[[paste0("variable_coef_2_",i)]]))*(value^2) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+          }
+          
+          #Linear...
+          if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
+            plot_df = data.frame(value = rnorm(100, mean = 1, 
+                                               sd = 1)) %>%
+              mutate(y = -as.numeric(input[[paste0("variable_coef_2_",i)]])*(value) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+          }
+          return(plot_df)
+        })
+        
+        # Need local so that each item gets its own number. Without it, the value
+        # of i in the renderPlot() will be the same across all instances, because
+        # of when the expression is evaluated.
+        local({
+          
+          #variable name.
+          variable_name = input[[paste0("variable_", i)]]
+          
+          tags_to_add <<- tagList(
+            h3(str_to_title(variable_name)),
+            fluidRow(
+              column(width = 3,
+                     selectInput(
+                       inputId = paste0("variable_stressor_model_",i),
+                       choices = c("Sigmoidal" = "sigmoidal",
+                                   "Linear" = "linear",
+                                   "Hyperbolic" = "hyperbolic"),
+                       selected = "hyperbolic",
+                       label = paste0("Stressor response type for variable ",i),
+                     )
+              ), #column end.
+              column(width = 3,
+                     textInput(
+                       inputId = paste0("variable_coef_1_",i),
+                       value = 1,
+                       label = paste0("Mean or Intercept"),
+                     ),
+                     textInput(
+                       inputId = paste0("variable_coef_2_",i),
+                       value = 1,
+                       label = paste0("Standard deviation or slope"),
+                     )
+              ), #column end.
+              column(width = 6,
+                     renderPlot({
+                       # #Sigmoidal...
+                       # if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
+                       #   plot_df = data.frame(value = rnorm(100, mean = as.numeric(input[[paste0("variable_coef_1_",i)]]), 
+                       #                            sd = as.numeric(input[[paste0("variable_coef_2_",i)]]))) %>%
+                       #     mutate(y = -value^2 + value + 1)
+                       # }
+                       # 
+                       # #Hyperbolic...
+                       # if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
+                       #   plot_df = data.frame(value = rnorm(100, mean = 1, 
+                       #                                      sd = 1)) %>%
+                       #     mutate(y = -(as.numeric(input[[paste0("variable_coef_2_",i)]]))*(value^2) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+                       # }
+                       # 
+                       # #Linear...
+                       # if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
+                       #   plot_df = data.frame(value = rnorm(100, mean = 1, 
+                       #                                      sd = 1)) %>%
+                       #     mutate(y = -as.numeric(input[[paste0("variable_coef_2_",i)]])*(value) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+                       # }
+                       Plot_DF() %>% 
+                         #Get rid of plotting values below 0 on y axis.
+                         filter(y >= 0) %>% 
+                         ggplot(aes(x = value, 
+                                    y = y)) +
+                         geom_smooth() +
+                         theme_minimal() +
+                         theme(legend.position = "none",
+                               text = element_text(size = 20)) +
+                         labs(x = variable_name) +
+                         scale_fill_brewer(palette = "Dark2")},
+                       height = 400, width = 300)
+              ) #column end.
+            ), #fluidRow end.
+            hr(style = "border-top: 1px solid #980028"),
+          )
+        })
+        
+        model_selection_panel_taglist = tagList(
+          model_selection_panel_taglist,
+          tags_to_add
+        )
+      }
+      
+      return(model_selection_panel_taglist)
     }
   })
   
-  # Render numeric inputs for each variable with which the user can set the coefficient of each covariate.
-  inserted_coefs <- c()
-  observeEvent(input$number_vars, {
-    
-    variable_number <- input$number_vars
-    id <- paste0('variable_coef_', variable_number)
-    
-    if (input$number_vars > length(inserted_coefs)) {
-      insertUI(selector = '#variable_coefs',
-               ui = tags$div(tags$p(
-                 textInput(
-                   inputId = paste0("variable_coef_",variable_number),
-                   value = 1,
-                   label = paste0("Coefficient of variable ",variable_number, " (must be numeric)"),
-                 )),
-                 id = id))
-      inserted_coefs <<- c(id, inserted_coefs)
-    }
-    else {
-      inserted_coefs <- sort(inserted_coefs)
-      removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
-      inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
-    }
-  })
-  
-  #Make math form of model. This is just to make a UI for the user.
+  # Make math form of model. This is just to make a UI for the user.
   ModelDisplay = reactive({
+    if(is.null(input$variable_1))return(NULL)
     
     vars = c()
     
@@ -579,19 +700,147 @@ server <- function(input, output, session) {
       
       varname = input[[paste0("variable_", i)]]
       
-      mod = input[[paste0("variable_coef_", i)]]
+      mod = as.numeric(input[[paste0("var_coef_", i)]])
       
       vars = c(vars, paste0(mod,"(",varname,")"))
     }
-      
+    
     model = paste0("Output = ",paste0(vars, collapse = " + "))
     
-    model
-})
+    return(model)
+  })
+  
+  #output$modeltext_verbatim = renderText(paste0(Output = ModelDisplay()))
   
   output$modeltext = renderUI({
-    withMathJax(paste0("$$", ModelDisplay(),"$$"))
+    withMathJax(helpText(paste0("Model: ","$$", ModelDisplay(),"$$")))
+    #paste0("$$", ModelDisplay(),"$$")
   })
+  
+  
+  #   #Render drop-down choices for which stressor response model will be used for the variables.
+  #   model_choices = c()
+  #   observeEvent(input$number_vars, {
+  #     
+  #     variable_number <- input$number_vars
+  #     id <- paste0('variable_stressor_model_', variable_number)
+  #     
+  #     if (input$number_vars > length(inserted_coefs)) {
+  #       insertUI(selector = '#variable_stressor_models',
+  #                ui = tags$div(tags$p(
+  #                  selectInput(
+#                    inputId = paste0("variable_stressor_model_",variable_number),
+#                    choices = c("Sigmoidal" = "sigmoidal",
+#                                "Linear" = "linear",
+#                                "Hyperbolic" = "hyperbolic"),
+#                    selected = "sigmoidal",
+#                    label = paste0("Stressor model for variable ",variable_number),
+#                  )),
+#                  id = id))
+#       model_choices <<- c(id, model_choices)
+#     }
+#     else {
+#       inserted_coefs <- sort(inserted_coefs)
+#       removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
+#       inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
+#     }
+#   })
+#   
+#   # Render numeric inputs for each variable with which the user can set the 
+#   # parameters of each response function. Parameter 1 is the mean (if sigmoidal) 
+#   # or the intercept (if linear or hyperbolic), while parameter 2 is the standard deviation 
+#   # (if sigmoidal) or the slope (if linear) or the asymptote (if hyperbolic)
+#   inserted_parameter_1 <- c()
+#   inserted_parameter_2 <- c()
+#   
+#   observeEvent(input$number_vars, {
+#     
+#     variable_number <- input$number_vars
+#     id_param_1 <- paste0('variable_param_1_var_', variable_number)
+#     id_param_2 <- paste0('variable_param_2_var_', variable_number)
+#     
+#     if(input$number_vars > length(inserted_parameter_1)) {
+#       
+#       #If the response curve is sigmoidal...
+#       if(input[[paste0("variable_stressor_model_",variable_number)]] == "sigmoidal"){
+#         #Parameter 1
+#         insertUI(selector = '#variable_coefs',
+#                  ui = tags$div(tags$p(
+#                    textInput(
+#                      inputId = paste0("variable_coef_1_",variable_number),
+#                      value = 1,
+#                      label = paste0("Mean of sigmoidal distribution"),
+#                    )),
+#                    id = id_param_1))
+#         #Parameter 2
+#         insertUI(selector = '#variable_coefs',
+#                  ui = tags$div(tags$p(
+#                    textInput(
+#                      inputId = paste0("variable_coef_2_",variable_number),
+#                      value = 1,
+#                      label = paste0("Standard deviation"),
+#                    )),
+#                    id = id_param_1))
+#       }
+#       
+#       #If the response curve is linear...
+#       if(input[[paste0("variable_stressor_model_",variable_number)]] == "linear"){
+#         #Parameter 1.
+#         insertUI(selector = '#variable_coefs',
+#                  ui = tags$div(tags$p(
+#                    textInput(
+#                      inputId = paste0("variable_coef_1_",variable_number),
+#                      value = 1,
+#                      label = paste0("Intercept"),
+#                    )),
+#                    id = id_param_1))
+#         
+#         #Parameter 2.
+#         insertUI(selector = '#variable_coefs',
+#                  ui = tags$div(tags$p(
+#                    textInput(
+#                      inputId = paste0("variable_coef_2_",variable_number),
+#                      value = 1,
+#                      label = paste0("Slope of line"),
+#                    )),
+#                    id = id_param_2))
+#       }
+#       
+#       #If the response curve is hyperbolic
+#       if(input[[paste0("variable_stressor_model_",variable_number)]] == "hyperbolic"){
+#         #Parameter 1.
+#         insertUI(selector = '#variable_coefs',
+#                  ui = tags$div(tags$p(
+#                    textInput(
+#                      inputId = paste0("variable_coef_1_",variable_number),
+#                      value = 1,
+#                      label = paste0("Intercept"),
+#                    )),
+#                    id = id_param_1))
+#         
+#         #Parameter 2.
+#         insertUI(selector = '#variable_coefs',
+#                  ui = tags$div(tags$p(
+#                    textInput(
+#                      inputId = paste0("variable_coef_2_",variable_number),
+#                      value = 1,
+#                      label = paste0("Asymptote"),
+#                    )),
+#                    id = id_param_2))
+#       }
+#       #Add the response curve parameters to their respective vectors.
+#       inserted_parameter_1 <<- c(id, inserted_parameter_1)
+#       }
+#     else {
+#       inserted_coefs <- sort(inserted_coefs)
+#       removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
+#       inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
+#     }
+#   })
+#   
+#   #Make little graphs to show each of the response functions' shape.
+#   
+#   
   
   #Sum across columns to calculate result column.
   UserDatSummed = reactive({
@@ -600,14 +849,31 @@ server <- function(input, output, session) {
     dat = UserDatBinned()
 
     #Apply the coefficients entered by the user to each variable.
+    
     for(i in 1:input$number_vars){
 
       variables = paste0(SelectedColumns(),"_binned")
       
-      dat = dat %>% 
-        mutate(mod = input[[paste0("variable_coef_", i)]]) %>% 
-        mutate(mod = as.numeric(mod)) %>% 
-        mutate(!!sym(paste0(variables[i],"_with_mod")) := (mod * !!sym(variables[i])))
+      if(input$model_selection_type == "lineareq"){
+        dat = dat %>% 
+          mutate(mod = input[[paste0("var_coef_", i)]]) %>% 
+          mutate(mod = as.numeric(mod)) %>% 
+          mutate(!!sym(paste0(variables[i],"_with_mod")) := (mod * !!sym(variables[i])))
+      }
+      if(input$model_selection_type == "stressor"){
+        #See if the variable-in-question's response curve was selected to be sigmoidal, or linear, etc.
+        if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
+          
+        }
+        
+        if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
+          
+        }
+        
+        if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
+          
+        }
+      }
     }
     
     dat$result = rowSums(dat %>% st_drop_geometry() %>% select(ends_with("_binned_with_mod")))
@@ -648,25 +914,6 @@ server <- function(input, output, session) {
         st_transform(crs = 4326)
       
       return(userpoly)
-    } else if (str_detect(file_name$datapath, ".xlsx")){
-      #If it's an excel file, read that in.
-      userpoly = read_excel(file_name$datapath)
-      
-      #If the excel table has lat/lon, use the following chunk.
-      if(str_detect(str_to_lower(names(userpoly)),"(lat|lon)")){
-        likely_lon = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "lon(g)?")]
-        likely_lat = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "lat")]
-        userpoly = st_as_sf(userpoly, coords = c(likely_lon, likely_lat), crs = 4326)
-      }
-      
-      #If the excel table has BC Albers, use the following chunk.
-      if(str_detect(str_to_lower(names(userpoly)),"bcalber")){
-        likely_easting = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "bcalbers_")]
-        likely_northing = names(userpoly)[str_detect(str_to_lower(names(userpoly)), "bcalbers1")]
-        userpoly = st_as_sf(userpoly, coords = c(likely_easting, likely_northing), crs = 3005)
-      }
-      
-      return(userpoly)
     }
   })
   
@@ -692,7 +939,7 @@ server <- function(input, output, session) {
         mutate(row.number = row_number())
       
       summed_dat = UserDatSummed() %>%
-        st_join(user_poly) %>%
+        st_join(user_poly, st_nearest_feature) %>%
         st_drop_geometry() %>%
         group_by(row.number) %>%
         summarise(mean_result = mean(result,na.rm=T))
@@ -729,18 +976,25 @@ server <- function(input, output, session) {
   output$spatial_results_map = renderPlot({
     poly_map = if(input$bin_results == "Yes"){
       ggplot() +
-        geom_sf(data = SpatialResults(), aes(fill = as.factor(mean_result_binned))) +
-        geom_sf(data = UserDatBinned(), col = "yellow") +
+        geom_sf(data = bc, fill = "grey") +
+        geom_sf(data = SpatialResults(), aes(col = as.factor(mean_result_binned),
+                                             fill = as.factor(mean_result_binned))) +
+        geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
         scale_fill_manual(values = c("1" = "#52ad2b",
                                      "2" = "#db8035",
                                      "3" = "#e02626")) +
-        labs(fill = "Model Output") + 
-        theme_minimal()
+        labs(fill = "Model Output",
+             col = "Model Output") + 
+        theme_minimal() + 
+        coord_sf(xlim = c(-125,-120), ylim = c(49, 52))
     }else{
       ggplot() +
-        geom_sf(data = SpatialResults(), aes(fill = mean_result)) +
-        geom_sf(data = UserDatBinned(), col = "yellow") +
-        labs(fill = "Model Output")
+        geom_sf(data = bc, fill = "grey") +
+        geom_sf(data = SpatialResults(), aes(fill = mean_result, col = mean_result)) +
+        geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
+        labs(fill = "Model Output") + 
+        theme_minimal() +
+        coord_sf(xlim = c(-125,-120), ylim = c(49, 52))
     }
 
   rast_map = if(input$bin_results == "Yes"){
