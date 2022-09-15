@@ -25,6 +25,14 @@ rm(list = ls())
 options(shiny.maxRequestSize = 150*1024^2)
 
 #--------------------------------------------------------------------
+# LOAD IN SOURCE FILES
+
+source('source_scripts/01_Tab_Data.R')
+source('source_scripts/02_Tab_Cleaning.R')
+source('source_scripts/03_Tab_Model.R')
+source('source_scripts/04_Tab_Results.R')
+
+#--------------------------------------------------------------------
 # LOAD IN BACKGROUND FILES
 
 # Read in BC shapefile and subwatersheds.
@@ -65,93 +73,14 @@ ui <- fluidPage(
     ),
     mainPanel(
       tabsetPanel(
-        tabPanel("Data Upload",
-                 column(width = 8,
-                        inputPanel(
-                          fileInput(inputId = "user_data", label = "Dataset",
-                                    accept = c(".zip",".gpkg","xlsx"),
-                                    placeholder = "Upload file (zip, gpkg, or xlsx"),
-                        ),
-                        h5("Snapshot of your data."),
-                        inputPanel(
-                          uiOutput('cols_checkboxes'),
-                          dataTableOutput('data_preview')
-                        )
-                 ),
-                 column(width = 4,
-                        inputPanel(
-                          numericInput(inputId = "number_vars",
-                                     label = "Number of Variables",
-                                     value = 1, min = 1, max = 6, width = '700px')
-                          ),
-                        inputPanel(
-                          tags$div(id = 'variable_selectors')
-                        ),
-                        inputPanel(
-                          uiOutput('factorizing')
-                        )
-                 )),
-        tabPanel("Data Cleaning + Binning",
-                 uiOutput("binning_panel"),
-                 fluidRow(
-                   dataTableOutput('bin_check'),
-                   textOutput('label_check')
-                 )
-                 ),
-        tabPanel("Model Specification",
-                 h3("Model:"),
-                 uiOutput("modeltext"),
-                 selectInput(inputId = "model_selection_type",
-                             label = "Model Selection Type",
-                             choices = c("Linear Equation" = "lineareq",
-                                         "Stressor Response Function(s)" = "stressor"),
-                             selected = "lineareq"),
-                 uiOutput('model_selection_panel'),
-                 uiOutput('stress_response_figures'),
-                 #tags$div(id = 'variable_stressor_models'),
-                 #tags$div(id = "variable_coefs"),
-                 hr(),
-                 hr(),
-                 h3("Model Output"),
-                 dataTableOutput('model_result'),
-        ),
-        tabPanel("Results",
-                 inputPanel(selectInput("spat_scale", label = "Spatial Scale", 
-                                        choices = c("FLNRORD fisheries regions" = "flnro",
-                                                    "Your Polygon(s)" = "user_poly_scale"), 
-                                        selectize = F),
-                            fileInput(inputId = "user_scale_poly", label = "Your Polygon(s)",
-                                      accept = c(".zip",".gpkg","xlsx"),
-                                      placeholder = "Upload file (zip, gpkg, or xlsx")),
-                 inputPanel(textInput(
-                              inputId = "raster_res",
-                              label = "Raster Resolution (m^2)",
-                              value = 1000
-                            ),
-                            radioButtons(inputId = "bin_results",
-                                         label = "Bin model results into 3 bins?",
-                                         choices = c("Yes","No"),
-                                         selected = "No")
-                 ),
-                 tabsetPanel(
-                   tabPanel("Maps",
-                     plotOutput('spatial_results_map', width = '100%', height = '100%')
-                   ),
-                   tabPanel("Table",
-                     dataTableOutput('spatial_results_table')
-                   )
-                 ),
-                 inputPanel(downloadButton('downloadData',"Download Shapefile"),
-                            downloadButton('downloadDataRaster',"Download Raster"),
-                            downloadButton('downloadDataTable',"Download Table")
-                            )
-        )
+        data_tab,
+        cleaning_tab,
+        model_tab,
+        results_tab
       ),
       width = 9
     )
   )
-  #),
-  # width = '300px'
 )
 
 #--------------------------------------------------------------------
