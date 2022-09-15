@@ -9,7 +9,7 @@ results_tab = tabPanel("Results",
                        inputPanel(textInput(
                          inputId = "raster_res",
                          label = "Raster Resolution (m^2)",
-                         value = 1000
+                         value = 50
                        ),
                        radioButtons(inputId = "bin_results",
                                     label = "Bin model results into 3 bins?",
@@ -18,7 +18,11 @@ results_tab = tabPanel("Results",
                        ),
                        tabsetPanel(
                          tabPanel("Maps",
-                                  plotOutput('spatial_results_map', width = '100%', height = '100%')
+                                  column(width = 6,
+                                         plotOutput('poly_map')),
+                                  column(width = 6,
+                                         plotOutput('rast_map'))
+                                  #plotOutput('spatial_results_map', width = '100%', height = '100%')
                          ),
                          tabPanel("Table",
                                   dataTableOutput('spatial_results_table')

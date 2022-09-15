@@ -2,8 +2,9 @@ library(shiny)
 library(shinydashboard)
 library(tidyverse) #For data manipulation and piping.
 library(sf) #For vector spatial functions.
-# library(leaflet)
-# library(leaflet.extras)
+library(leaflet)
+library(leaflet.extras)
+library(pals)
 library(DT) #For interactive data tables.
 library(terra) #For raster functions.
 library(readxl) #To read in excel files.
@@ -51,10 +52,10 @@ ui <- fluidPage(
     sidebarPanel(
       inputPanel(
         align = "center",
-        h2("Risk Model Tool"),
+        h2("Spatial Analysis Tool"),
         #HTML('<p><img src="robot-head.png"/></p>'),
         img(src="robot-head.png", width = '100px'),
-        h3("Chris 2.0"),
+        #h3(""),
         hr(style = "border-top: 4px solid #980028;"),
         h4("Step 1. Upload your dataset, \nselect variables"),
         hr(style = "border-top: 1px solid #980028; opacity: 0"),

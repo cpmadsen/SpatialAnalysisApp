@@ -61,7 +61,7 @@ SpatialResults = reactive({
 
   if(input$bin_results == "Yes"){
     spatial_results = spatial_results %>%
-      mutate(mean_result_binned = as.numeric(cut(mean_result,3)))
+      mutate(mean_result_binned = as.numeric(cut(mean_result,3))) 
   }
 
   return(spatial_results)
@@ -74,9 +74,11 @@ SpatialResultsRast = reactive({
   spatial_results_res = terra::rast(spatial_results_spat, resolution = as.numeric(input$raster_res))
 
   if(input$bin_results == "Yes"){
-    spatial_results_rast = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result_binned")
+    spatial_results_rast = rasterize(spatial_results_spat,
+                                     spatial_results_res, field = "mean_result_binned")
   }else{
-    spatial_results_rast = rasterize(spatial_results_spat, spatial_results_res, field = "mean_result")
+    spatial_results_rast = rasterize(spatial_results_spat,
+                                     spatial_results_res, field = "mean_result")
   }
 
   return(spatial_results_rast)
@@ -84,51 +86,88 @@ SpatialResultsRast = reactive({
 
 output$spatial_results_table = renderDataTable(SpatialResults())
 
-output$spatial_results_map = renderPlot({
-  poly_map = if(input$bin_results == "Yes"){
+#output$spatial_results_map = renderPlot({
+  
+# output$poly_map = renderLeaflet({
+#   
+#   cont_colour_scheme = leaflet::colorNumeric(palette = 'inferno',
+#                                              domain = SpatialResults()$mean_result)
+#   
+#   bin_colour_scheme = leaflet::colorFactor(palette = 'inferno',
+#                                            domain = SpatialResults()$mean_result_binned)
+#   
+#   map = leaflet()
+#   
+#   if(input$bin_results == "Yes"){
+#     map = map %>% addPolygons(data = SpatialResults(),
+#                               col = ~bin_colour_scheme(mean_result_binned),
+#                               fill = ~bin_colour_scheme(mean_result_binned),
+#                               fillColor = ~bin_colour_scheme(mean_result_binned)
+#     )
+#   } else if(input$bin_results == "No"){
+#     map = map %>% addPolygons(data = SpatialResults(),
+#                               col = ~cont_colour_scheme(mean_result),
+#                               fill = ~cont_colour_scheme(mean_result),
+#                               fillColor = ~cont_colour_scheme(mean_result)
+#     )
+#   }
+#   
+#   map = map %>% 
+#     addCircleMarkers(data = UserDatSummed(), col = "purple") %>% 
+#     leaflet::setMaxBounds(lng1 = -125, lng2 = -120, lat1 = 49, lat2 = 52)
+#   
+#   return(map)
+# })
+output$poly_map = renderPlot({
+  
+  if(input$bin_results == "Yes"){
     ggplot() +
       geom_sf(data = bc, fill = "grey") +
-      geom_sf(data = SpatialResults(), aes(col = as.factor(mean_result_binned),
-                                           fill = as.factor(mean_result_binned))) +
-      geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
-      scale_fill_manual(values = c("1" = "#52ad2b",
-                                   "2" = "#db8035",
-                                   "3" = "#e02626")) +
+      geom_sf(data = SpatialResults(), aes(col = (mean_result_binned),
+                                           fill = (mean_result_binned))) +
+      geom_sf(data = UserDatBinned(), col = "white", alpha = 0.5) +
+      # scale_fill_manual(values = c("1" = "#52ad2b",
+      #                              "2" = "#db8035",
+      #                              "3" = "#e02626")) +
+      # scale_colour_manual(values = c("1" = "#52ad2b",
+      #                                "2" = "#db8035",
+      #                                "3" = "#e02626")) +
       labs(fill = "Model Output",
            col = "Model Output") +
-      theme_minimal() +
-      coord_sf(xlim = c(-125,-120), ylim = c(49, 52))
+      theme_minimal()
   }else{
     ggplot() +
       geom_sf(data = bc, fill = "grey") +
       geom_sf(data = SpatialResults(), aes(fill = mean_result, col = mean_result)) +
-      geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
-      labs(fill = "Model Output") +
-      theme_minimal() +
-      coord_sf(xlim = c(-125,-120), ylim = c(49, 52))
-  }
-
-rast_map = if(input$bin_results == "Yes"){
+      geom_sf(data = UserDatBinned(), col = "white", alpha = 0.5) +
+      labs(fill = "Model Output", col = "Model Output") +
+      theme_minimal()
+    }
+})
+  
+output$rast_map = renderPlot({
+  if(input$bin_results == "Yes"){
     gplot(SpatialResultsRast()) +
-      geom_tile(aes(fill = as.factor(value))) +
-      scale_fill_manual(values = c("1" = "#52ad2b",
-                                   "2" = "#db8035",
-                                   "3" = "#e02626"),
-                        na.value = NA) +
-      labs(fill = "Model Output") +
-    theme_minimal()
+      geom_tile(aes(fill = (value))) +
+      # scale_fill_manual(values = c("1" = "#52ad2b",
+      #                              "1" = "#db8035",
+      #                              "3" = "#e02626"),
+      #                   na.value = NA) +
+      labs(fill = "Model Output", title = "Raster Output") +
+      theme_minimal()
   }else{
     gplot(SpatialResultsRast()) +
       geom_tile(aes(fill = value)) +
-      labs(fill = "Model Output") +
+      labs(fill = "Model Output", title = "Raster Output") +
       theme_minimal() +
       scale_fill_continuous(na.value = NA)
   }
+})
 
-ggarrange(poly_map, rast_map, ncol = 2)
-},
-width = 1300,
-height = 500)
+# ggarrange(poly_map, rast_map, ncol = 2)
+# },
+# width = 1300,
+# height = 500)
 
 output$downloadDataTable <- downloadHandler(
   filename = function() {
