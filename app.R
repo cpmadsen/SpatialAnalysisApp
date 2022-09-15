@@ -107,6 +107,7 @@ ui <- fluidPage(
                                          "Stressor Response Function(s)" = "stressor"),
                              selected = "lineareq"),
                  uiOutput('model_selection_panel'),
+                 uiOutput('stress_response_figures'),
                  #tags$div(id = 'variable_stressor_models'),
                  #tags$div(id = "variable_coefs"),
                  hr(),
@@ -582,30 +583,30 @@ server <- function(input, output, session) {
       
       for(i in 1:input$number_vars){
         
-        #dataframe for plotting response curves.
-        Plot_DF = reactive({
-          #Sigmoidal...
-          if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
-            plot_df = data.frame(value = rnorm(100, mean = as.numeric(input[[paste0("variable_coef_1_",i)]]), 
-                                               sd = as.numeric(input[[paste0("variable_coef_2_",i)]]))) %>%
-              mutate(y = -value^2 + value + 1)
-          }
-          
-          #Hyperbolic...
-          if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
-            plot_df = data.frame(value = rnorm(100, mean = 1, 
-                                               sd = 1)) %>%
-              mutate(y = -(as.numeric(input[[paste0("variable_coef_2_",i)]]))*(value^2) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
-          }
-          
-          #Linear...
-          if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
-            plot_df = data.frame(value = rnorm(100, mean = 1, 
-                                               sd = 1)) %>%
-              mutate(y = -as.numeric(input[[paste0("variable_coef_2_",i)]])*(value) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
-          }
-          return(plot_df)
-        })
+        # #dataframe for plotting response curves.
+        # Plot_DF = reactive({
+        #   #Sigmoidal...
+        #   if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
+        #     plot_df = data.frame(value = rnorm(100, mean = as.numeric(input[[paste0("variable_coef_1_",i)]]), 
+        #                                        sd = as.numeric(input[[paste0("variable_coef_2_",i)]]))) %>%
+        #       mutate(y = -value^2 + value + 1)
+        #   }
+        #   
+        #   #Hyperbolic...
+        #   if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
+        #     plot_df = data.frame(value = rnorm(100, mean = 1, 
+        #                                        sd = 1)) %>%
+        #       mutate(y = -(as.numeric(input[[paste0("variable_coef_2_",i)]]))*(value^2) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+        #   }
+        #   
+        #   #Linear...
+        #   if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
+        #     plot_df = data.frame(value = rnorm(100, mean = 1, 
+        #                                        sd = 1)) %>%
+        #       mutate(y = -as.numeric(input[[paste0("variable_coef_2_",i)]])*(value) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+        #   }
+        #   return(plot_df)
+        # })
         
         # Need local so that each item gets its own number. Without it, the value
         # of i in the renderPlot() will be the same across all instances, because
@@ -641,39 +642,39 @@ server <- function(input, output, session) {
                      )
               ), #column end.
               column(width = 6,
-                     renderPlot({
-                       # #Sigmoidal...
-                       # if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
-                       #   plot_df = data.frame(value = rnorm(100, mean = as.numeric(input[[paste0("variable_coef_1_",i)]]), 
-                       #                            sd = as.numeric(input[[paste0("variable_coef_2_",i)]]))) %>%
-                       #     mutate(y = -value^2 + value + 1)
-                       # }
-                       # 
-                       # #Hyperbolic...
-                       # if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
-                       #   plot_df = data.frame(value = rnorm(100, mean = 1, 
-                       #                                      sd = 1)) %>%
-                       #     mutate(y = -(as.numeric(input[[paste0("variable_coef_2_",i)]]))*(value^2) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
-                       # }
-                       # 
-                       # #Linear...
-                       # if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
-                       #   plot_df = data.frame(value = rnorm(100, mean = 1, 
-                       #                                      sd = 1)) %>%
-                       #     mutate(y = -as.numeric(input[[paste0("variable_coef_2_",i)]])*(value) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
-                       # }
-                       Plot_DF() %>% 
-                         #Get rid of plotting values below 0 on y axis.
-                         filter(y >= 0) %>% 
-                         ggplot(aes(x = value, 
-                                    y = y)) +
-                         geom_smooth() +
-                         theme_minimal() +
-                         theme(legend.position = "none",
-                               text = element_text(size = 20)) +
-                         labs(x = variable_name) +
-                         scale_fill_brewer(palette = "Dark2")},
-                       height = 400, width = 300)
+                       renderPlot({
+                         if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
+                           plot_df = data.frame(value = rnorm(100, mean = as.numeric(input[[paste0("variable_coef_1_",i)]]), 
+                                                              sd = as.numeric(input[[paste0("variable_coef_2_",i)]]))) %>%
+                             mutate(y = -value^2 + value + 1)
+                         }
+                         
+                         #Hyperbolic...
+                         if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
+                           plot_df = data.frame(value = rnorm(100, mean = 1, 
+                                                              sd = 1)) %>%
+                             mutate(y = -(as.numeric(input[[paste0("variable_coef_2_",i)]]))*(value^2) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+                         }
+                         
+                         #Linear...
+                         if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
+                           plot_df = data.frame(value = rnorm(100, mean = 1, 
+                                                              sd = 1)) %>%
+                             mutate(y = -as.numeric(input[[paste0("variable_coef_2_",i)]])*(value) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+                         }
+                         
+                         plot_df %>% 
+                           #Get rid of plotting values below 0 on y axis.
+                           filter(y >= 0) %>% 
+                           ggplot(aes(x = value, 
+                                      y = y)) +
+                           geom_smooth() +
+                           theme_minimal() +
+                           theme(legend.position = "none",
+                                 text = element_text(size = 20)) +
+                           labs(x = variable_name) +
+                           scale_fill_brewer(palette = "Dark2")},
+                         height = 400, width = 300) #Render plot end
               ) #column end.
             ), #fluidRow end.
             hr(style = "border-top: 1px solid #980028"),
@@ -687,6 +688,91 @@ server <- function(input, output, session) {
       }
       
       return(model_selection_panel_taglist)
+    }
+  })
+  
+  
+  
+  observeEvent(input$number_vars, {
+    
+    variable_number <- input$number_vars
+    id <- paste0('variable_', variable_number)
+    if (input$number_vars > length(inserted_variableselections)) {
+      insertUI(selector = '#variable_selectors',
+               ui = tags$div(tags$p(
+                 selectInput(
+                   inputId = paste0("variable_",variable_number),
+                   label = "Variable Selection",
+                   choices = names(UserDat()),
+                   multiple = F,
+                   width = "200%"
+                 )),
+                 id = id))
+      inserted_variableselections <<- c(id, inserted_variableselections)
+    }
+    else {
+      inserted_variableselections <- sort(inserted_variableselections)
+      removeUI(selector = paste0('#', inserted_variableselections[length(inserted_variableselections)]))          
+      inserted_variableselections <<- inserted_variableselections[-length(inserted_variableselections)]
+    }
+  })
+  
+  
+  #Render figures for stress response curves.
+  output$stress_response_figures = renderUI({
+    if(input$model_selection_type == "stressor"){
+      if(is.null(input$variable_1))return(NULL)
+      
+      stressor_response_figure_taglist = tagList()
+      
+      for(i in 1:input$number_vars){
+        
+        local({
+          #variable name.
+          variable_name = input[[paste0("variable_", i)]]
+          
+          tags_to_add <<- tagList(
+            renderPlot({
+              if(input[[paste0("variable_stressor_model_",i)]] == "sigmoidal"){
+                plot_df = data.frame(value = rnorm(100, mean = as.numeric(input[[paste0("variable_coef_1_",i)]]), 
+                                                   sd = as.numeric(input[[paste0("variable_coef_2_",i)]]))) %>%
+                  mutate(y = -value^2 + value + 1)
+              }
+              
+              #Hyperbolic...
+              if(input[[paste0("variable_stressor_model_",i)]] == "hyperbolic"){
+                plot_df = data.frame(value = rnorm(100, mean = 1, 
+                                                   sd = 1)) %>%
+                  mutate(y = -(as.numeric(input[[paste0("variable_coef_2_",i)]]))*(value^2) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+              }
+              
+              #Linear...
+              if(input[[paste0("variable_stressor_model_",i)]] == "linear"){
+                plot_df = data.frame(value = rnorm(100, mean = 1, 
+                                                   sd = 1)) %>%
+                  mutate(y = -as.numeric(input[[paste0("variable_coef_2_",i)]])*(value) + as.numeric(input[[paste0("variable_coef_1_",i)]]))
+              }
+              
+              plot_df %>% 
+                #Get rid of plotting values below 0 on y axis.
+                filter(y >= 0) %>% 
+                ggplot(aes(x = value, 
+                           y = y)) +
+                geom_smooth() +
+                theme_minimal() +
+                theme(legend.position = "none",
+                      text = element_text(size = 20)) +
+                labs(x = variable_name) +
+                scale_fill_brewer(palette = "Dark2")},
+              height = 400, width = 300)
+          )
+          
+          stressor_response_figure_taglist = tagList(
+            stressor_response_figure_taglist,
+            tags_to_add)
+        })
+      }
+      return(stressor_response_figure_taglist)
     }
   })
   
@@ -716,131 +802,6 @@ server <- function(input, output, session) {
     withMathJax(helpText(paste0("Model: ","$$", ModelDisplay(),"$$")))
     #paste0("$$", ModelDisplay(),"$$")
   })
-  
-  
-  #   #Render drop-down choices for which stressor response model will be used for the variables.
-  #   model_choices = c()
-  #   observeEvent(input$number_vars, {
-  #     
-  #     variable_number <- input$number_vars
-  #     id <- paste0('variable_stressor_model_', variable_number)
-  #     
-  #     if (input$number_vars > length(inserted_coefs)) {
-  #       insertUI(selector = '#variable_stressor_models',
-  #                ui = tags$div(tags$p(
-  #                  selectInput(
-#                    inputId = paste0("variable_stressor_model_",variable_number),
-#                    choices = c("Sigmoidal" = "sigmoidal",
-#                                "Linear" = "linear",
-#                                "Hyperbolic" = "hyperbolic"),
-#                    selected = "sigmoidal",
-#                    label = paste0("Stressor model for variable ",variable_number),
-#                  )),
-#                  id = id))
-#       model_choices <<- c(id, model_choices)
-#     }
-#     else {
-#       inserted_coefs <- sort(inserted_coefs)
-#       removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
-#       inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
-#     }
-#   })
-#   
-#   # Render numeric inputs for each variable with which the user can set the 
-#   # parameters of each response function. Parameter 1 is the mean (if sigmoidal) 
-#   # or the intercept (if linear or hyperbolic), while parameter 2 is the standard deviation 
-#   # (if sigmoidal) or the slope (if linear) or the asymptote (if hyperbolic)
-#   inserted_parameter_1 <- c()
-#   inserted_parameter_2 <- c()
-#   
-#   observeEvent(input$number_vars, {
-#     
-#     variable_number <- input$number_vars
-#     id_param_1 <- paste0('variable_param_1_var_', variable_number)
-#     id_param_2 <- paste0('variable_param_2_var_', variable_number)
-#     
-#     if(input$number_vars > length(inserted_parameter_1)) {
-#       
-#       #If the response curve is sigmoidal...
-#       if(input[[paste0("variable_stressor_model_",variable_number)]] == "sigmoidal"){
-#         #Parameter 1
-#         insertUI(selector = '#variable_coefs',
-#                  ui = tags$div(tags$p(
-#                    textInput(
-#                      inputId = paste0("variable_coef_1_",variable_number),
-#                      value = 1,
-#                      label = paste0("Mean of sigmoidal distribution"),
-#                    )),
-#                    id = id_param_1))
-#         #Parameter 2
-#         insertUI(selector = '#variable_coefs',
-#                  ui = tags$div(tags$p(
-#                    textInput(
-#                      inputId = paste0("variable_coef_2_",variable_number),
-#                      value = 1,
-#                      label = paste0("Standard deviation"),
-#                    )),
-#                    id = id_param_1))
-#       }
-#       
-#       #If the response curve is linear...
-#       if(input[[paste0("variable_stressor_model_",variable_number)]] == "linear"){
-#         #Parameter 1.
-#         insertUI(selector = '#variable_coefs',
-#                  ui = tags$div(tags$p(
-#                    textInput(
-#                      inputId = paste0("variable_coef_1_",variable_number),
-#                      value = 1,
-#                      label = paste0("Intercept"),
-#                    )),
-#                    id = id_param_1))
-#         
-#         #Parameter 2.
-#         insertUI(selector = '#variable_coefs',
-#                  ui = tags$div(tags$p(
-#                    textInput(
-#                      inputId = paste0("variable_coef_2_",variable_number),
-#                      value = 1,
-#                      label = paste0("Slope of line"),
-#                    )),
-#                    id = id_param_2))
-#       }
-#       
-#       #If the response curve is hyperbolic
-#       if(input[[paste0("variable_stressor_model_",variable_number)]] == "hyperbolic"){
-#         #Parameter 1.
-#         insertUI(selector = '#variable_coefs',
-#                  ui = tags$div(tags$p(
-#                    textInput(
-#                      inputId = paste0("variable_coef_1_",variable_number),
-#                      value = 1,
-#                      label = paste0("Intercept"),
-#                    )),
-#                    id = id_param_1))
-#         
-#         #Parameter 2.
-#         insertUI(selector = '#variable_coefs',
-#                  ui = tags$div(tags$p(
-#                    textInput(
-#                      inputId = paste0("variable_coef_2_",variable_number),
-#                      value = 1,
-#                      label = paste0("Asymptote"),
-#                    )),
-#                    id = id_param_2))
-#       }
-#       #Add the response curve parameters to their respective vectors.
-#       inserted_parameter_1 <<- c(id, inserted_parameter_1)
-#       }
-#     else {
-#       inserted_coefs <- sort(inserted_coefs)
-#       removeUI(selector = paste0('#', inserted_coefs[length(inserted_coefs)]))          
-#       inserted_coefs <<- inserted_coefs[-length(inserted_coefs)]
-#     }
-#   })
-#   
-#   #Make little graphs to show each of the response functions' shape.
-#   
-#   
   
   #Sum across columns to calculate result column.
   UserDatSummed = reactive({
