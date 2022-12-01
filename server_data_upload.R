@@ -1,28 +1,3 @@
-#Render the variable selection drop-downs based on the user's number input.
-inserted_variableselections <- c()
-observeEvent(input$number_vars, {
-  
-  variable_number <- input$number_vars
-  id <- paste0('variable_', variable_number)
-  if (input$number_vars > length(inserted_variableselections)) {
-    insertUI(selector = '#variable_selectors',
-             ui = tags$div(tags$p(
-               selectInput(
-                 inputId = paste0("variable_",variable_number),
-                 label = "Variable Selection",
-                 choices = names(UserDat()),
-                 multiple = F,
-                 width = "200%"
-               )),
-               id = id))
-    inserted_variableselections <<- c(id, inserted_variableselections)
-  }
-  else {
-    inserted_variableselections <- sort(inserted_variableselections)
-    removeUI(selector = paste0('#', inserted_variableselections[length(inserted_variableselections)]))          
-    inserted_variableselections <<- inserted_variableselections[-length(inserted_variableselections)]
-  }
-})
 
 #Reactive expression to read in user data. This function can parse .zip, .gpkg, and .xlsx files.
 UserDat = reactive({
@@ -69,35 +44,38 @@ UserDat = reactive({
   }
 })
 
-#Once the user has uploaded their dataset, we need to update the first variable selector drop-down
-#with the column names of that dataset.
+#React to data upload by updating which accordion item is open.
 observeEvent(input$user_data, {
-  updateSelectInput("variable_1", session = session,
-                    choices = names(UserDat()))
-})
+  updateAccordion('variable_upload_accordion',
+                  selected = 2)
+}
+)
 
 #Preview table to show user the data they've uploaded.
 output$data_preview <- renderDataTable({
   if(is.null(input$user_data)) return(NULL)
   
   UserDat()[1:5,] %>% 
-    select(all_of(input$show_preview_cols)) %>% 
-    mutate_if(is.numeric, ~round(.x,2))
+    select(all_of(input$selected_cols)) %>% 
+    mutate_if(is.numeric, ~round(.x,2)) %>% 
+    st_drop_geometry()
 })
 
 #Which columns of the preview data will we display? Up to the user.
 output$cols_checkboxes = renderUI(
-  checkboxGroupInput("show_preview_cols", "Columns in data to preview:",
-                     names(UserDat()), selected = names(UserDat())[1:5])
+  checkboxGroupInput("selected_cols", "",
+                     names(UserDat()), 
+                     selected = names(UserDat())[1:3])
 )
 
 # Get a reactive vector of column names that have been selected.
 SelectedColumns = reactive({
-  selected_vars = c()
-  for(i in 1:input$number_vars){
-    selected_vars = c(selected_vars, input[[paste0("variable_",i)]])
-  }
-  selected_vars
+  input$selected_cols
+  # selected_vars = c()
+  # for(i in 1:input$number_vars){
+  #   selected_vars = c(selected_vars, input[[paste0("variable_",i)]])
+  # }
+  # selected_vars
 })
 
 #For any chosen variables that are characters, we need a way to convert to numbers.
@@ -105,24 +83,24 @@ SelectedColumns = reactive({
 output$factorizing = renderUI({
   
   #If no variable has been selected yet, skip this for now...
-  if(is.null(input$variable_1))return(NULL)
+  if(is.null(input$selected_cols[1]))return(NULL)
   
   #Initialize tag list for this multipart UI element.
   factorizing_taglist = tagList()
   
   #For each variable that is NOT numeric, add a UI element to the 'factorizing_taglist'
-  for(i in 1:input$number_vars){
+  for(i in 1:length(input$selected_cols)){
     #Get variable name for this round of the loop...
-    variable_name = input[[paste0("variable_", i)]]
+    variable_name = input$selected_cols[i]
     
     #Is it categorical (i.e. NOT a number)? If so, do the following.
     if(is.character(UserDat()[[variable_name]]) == TRUE){
       
       tags_to_add = tagList(
-        h4(str_to_title(variable_name)),
+        h4(paste0('Choose levels for variable "',variable_name,'"')),
         rank_list(
           input_id = paste0("factor_list_",i),
-          text = "Sort Categorical Data - high to low (NA are removed)",
+          text = "Sort high to low (NA's are removed)",
           labels = na.omit(unique(UserDat() %>% pull(!!sym(variable_name))))
         )
       )
@@ -137,7 +115,7 @@ output$factorizing = renderUI({
 # Take the sorting the user has applied to the categorical variable(s)
 #    and apply it to make dummy variable(s)
 UserDatSelected = reactive({
-  if(is.null(input$variable_1))return(NULL)
+  if(is.null(input$selected_cols[1]))return(NULL)
   
   #Bring in reactive user dataset that they have uploaded.
   dat = UserDat()
@@ -145,13 +123,13 @@ UserDatSelected = reactive({
   # If the variable needs to be converted from a character category to a number,
   # use the ordering the user has provided with the drag-and-drop UI element.
   # If no factorization is needed for a given variable, keep the variable as is.
-  for(i in 1:input$number_vars){
+  for(i in 1:length(input$selected_cols)){
     
     #If we have some info from the factorization drag-and-drop for variable i...
     if(is.null(input[[paste0("factor_list_",i)]]) == FALSE){
       
       #Grab variable name and sorting heuristic.
-      variable_name = input[[paste0("variable_",i)]]
+      variable_name = input$selected_cols[i]
       variable_sorter = c(rev(input[[paste0("factor_list_",i)]]))
       #variable_sorter = c("Data missing", rev(input[[paste0("factor_list_",i)]]))
       

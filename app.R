@@ -12,6 +12,9 @@ library(ggpubr) #For ggarrange of final maps.
 library(rasterVis) #To visualize the rasters.
 library(classInt); library(BAMMtools) #For binning
 library(sortable) #Allows drag-and-drop input in Shiny apps
+library(thematic)
+
+thematic::thematic_shiny()
 
 rm(list = ls())
 

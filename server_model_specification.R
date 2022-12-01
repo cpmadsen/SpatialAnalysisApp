@@ -5,24 +5,24 @@
 
 output$model_selection_panel <- renderUI({
   
-  if(is.null(input$variable_1))return(NULL)
+  if(is.null(input$selected_cols[1]))return(NULL)
   
   if(input$model_selection_type == "lineareq"){
     
     model_selection_panel_taglist = tagList()
     
-    for(i in 1:input$number_vars){
+    for(i in 1:length(input$selected_cols)){
       
       #variable name.
-      variable_name = input[[paste0("variable_", i)]]
+      variable_name = input$selected_cols[i]
       
       tags_to_add <<- tagList(
-        h3(str_to_title(variable_name)),
+        #h3(str_to_title(variable_name)),
         fluidRow(
           textInput(
             inputId = paste0("var_coef_",i),
             value = 1,
-            label = paste0("Coefficient for variable ",i)
+            label = paste0('Coefficient for variable "',variable_name,'"')
           )
         ), #fluidRow end.
         hr(style = "border-top: 1px solid #980028")
@@ -39,11 +39,11 @@ output$model_selection_panel <- renderUI({
   }
   
   if(input$model_selection_type == "stressor"){
-    if(is.null(input$variable_1))return(NULL)
+    if(is.null(input$selected_cols[1]))return(NULL)
     
     model_selection_panel_taglist = tagList()
     
-    for(i in 1:input$number_vars){
+    for(i in 1:length(input$selected_cols)){
       
       #dataframe for plotting response curves.
       Plot_DF = reactive({
@@ -155,20 +155,20 @@ output$model_selection_panel <- renderUI({
 
 # Make math form of model. This is just to make a UI for the user.
 ModelDisplay = reactive({
-  if(is.null(input$variable_1))return(NULL)
+  if(is.null(input$selected_cols[1]))return(NULL)
   
   vars = c()
   
-  for(i in 1:input$number_vars){
+  for(i in 1:length(input$selected_cols)){
     
-    varname = input[[paste0("variable_", i)]]
+    varname = input$selected_cols[i]
     
     mod = as.numeric(input[[paste0("var_coef_", i)]])
     
     vars = c(vars, paste0(mod,"(",varname,")"))
   }
   
-  model = paste0("Output = ",paste0(vars, collapse = " + "))
+  model = paste0(paste0(vars, collapse = " + ")," = Output")
   
   return(model)
 })
@@ -313,7 +313,7 @@ UserDatSummed = reactive({
   
   #Apply the coefficients entered by the user to each variable.
   
-  for(i in 1:input$number_vars){
+  for(i in 1:length(input$selected_cols)){
     
     variables = paste0(SelectedColumns(),"_binned")
     
@@ -350,4 +350,4 @@ UserDatSummed = reactive({
   return(dat)
 })
 
-output$model_result = renderDataTable(UserDatSummed())
+output$model_result = renderDataTable(UserDatSummed() %>% st_drop_geometry())
