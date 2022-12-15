@@ -79,45 +79,45 @@ SpatialResultsRast = reactive({
 output$spatial_results_table = renderDataTable(SpatialResults())
 
 output$spatial_results_map = renderPlot({
-  poly_map = if(input$bin_results == "Yes"){
-    ggplot() +
-      geom_sf(data = bc, fill = "grey") +
-      geom_sf(data = SpatialResults(), aes(col = as.factor(mean_result_binned),
-                                           fill = as.factor(mean_result_binned))) +
-      geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
-      scale_fill_manual(values = c("1" = "#52ad2b",
-                                   "2" = "#db8035",
-                                   "3" = "#e02626")) +
-      labs(fill = "Model Output",
-           col = "Model Output") + 
-      theme_minimal() + 
-      coord_sf(xlim = c(-125,-120), ylim = c(49, 52))
-  }else{
-    ggplot() +
-      geom_sf(data = bc, fill = "grey") +
-      geom_sf(data = SpatialResults(), aes(fill = mean_result, col = mean_result)) +
-      geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
-      labs(fill = "Model Output") + 
-      theme_minimal() +
-      coord_sf(xlim = c(-125,-120), ylim = c(49, 52))
-  }
+  # poly_map = if(input$bin_results == "Yes"){
+  #   ggplot() +
+  #     geom_sf(data = bc, fill = "grey") +
+  #     geom_sf(data = SpatialResults(), aes(col = as.factor(mean_result_binned),
+  #                                          fill = as.factor(mean_result_binned))) +
+  #     geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
+  #     scale_fill_manual(values = c("1" = "#52ad2b",
+  #                                  "2" = "#db8035",
+  #                                  "3" = "#e02626")) +
+  #     labs(fill = "Model Output",
+  #          col = "Model Output") + 
+  #     theme_minimal() + 
+  #     coord_sf(xlim = c(-125,-120), ylim = c(49, 52))
+  # }else{
+  poly_map = ggplot() +
+    geom_sf(data = bc, fill = "grey") +
+    geom_sf(data = SpatialResults(), aes(fill = mean_result, col = mean_result)) +
+    geom_sf(data = UserDatBinned(), col = "purple", alpha = 0.5) +
+    labs(fill = "Model Output")
+    # scale_fill_continuous(palette = 'magma') +
+    theme_minimal()
+  # }
   
-  rast_map = if(input$bin_results == "Yes"){
-    gplot(SpatialResultsRast()) +
-      geom_tile(aes(fill = as.factor(value))) +
-      scale_fill_manual(values = c("1" = "#52ad2b",
-                                   "2" = "#db8035",
-                                   "3" = "#e02626"),
-                        na.value = NA) +
-      labs(fill = "Model Output") + 
-      theme_minimal()
-  }else{
-    gplot(SpatialResultsRast()) +
-      geom_tile(aes(fill = value)) +
-      labs(fill = "Model Output") + 
-      theme_minimal() + 
-      scale_fill_continuous(na.value = NA)
-  }
+  # rast_map = if(input$bin_results == "Yes"){
+  #   gplot(SpatialResultsRast()) +
+  #     geom_tile(aes(fill = as.factor(value))) +
+  #     scale_fill_manual(values = c("1" = "#52ad2b",
+  #                                  "2" = "#db8035",
+  #                                  "3" = "#e02626"),
+  #                       na.value = NA) +
+  #     labs(fill = "Model Output") + 
+  #     theme_minimal()
+  # }else{
+  rast_map = gplot(SpatialResultsRast()) +
+    geom_tile(aes(fill = value)) +
+    labs(fill = "Model Output") + 
+    theme_minimal() 
+    # scale_fill_continuous(palette = 'magma', na.value = NA)
+  # }
   
   ggarrange(poly_map, rast_map, ncol = 2)
 },

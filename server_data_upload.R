@@ -1,4 +1,83 @@
+# Instructions alert.
 
+observeEvent(input$instructions_request, {
+  showModal(
+    modalDialog(
+    "The Spatial Analysis Tool is an app I created in Rstudio and Shiny
+    to facilitate spatial assessments for people without an intimate knowledge 
+    of GIS, R or Python. This app allows you to upload your dataset, clean it and split it
+    into discrete 'bins', select how your chosen variables will interact, visualize
+    the results, and then download the results, if you wish.
+    
+    \nTo keep reading, click 'Next'.",
+    title = 'Spatial Analysis Tool Introduction',
+    easyClose = TRUE,
+    fade = F,
+    footer = actionButton(inputId = 'intro_step_2',
+                          label = "Next")
+  ))
+})
+
+observeEvent(input$intro_step_2, {
+  showModal(
+    modalDialog(
+      "Step one is to upload your data. Accepted formats include a shapefile that 
+      has been zipped into one folder, a geopackage, or even an excel file that has obvious columns
+      for latitude and longitude (or northings/eastings, depending on your projection system)",
+    
+      title = 'Spatial Analysis Tool Introduction - 1',
+      easyClose = TRUE,
+      fade = F,
+      footer = actionButton(inputId = 'intro_step_3',
+                            label = "Next")
+    ))
+})
+
+observeEvent(input$intro_step_3, {
+  showModal(
+    modalDialog(
+      "In step two, you can see the distribution of your selected variables, filter
+      out any extreme values, and choose the binning method. Check out the data
+      preview table at the bottom of the screen to see how your data is being filtered
+      and binned.",
+    
+      title = 'Spatial Analysis Tool Introduction - 2',
+      easyClose = TRUE,
+      fade = F,
+      footer = actionButton(inputId = 'intro_step_4',
+                            label = "Next")
+    ))
+})
+
+observeEvent(input$intro_step_4, {
+  showModal(
+    modalDialog(
+      "In step three, you choose how variables will be combined to produce some output variable.
+      Example output variables could be risk of introduction of invasive species, or habitat suitability for endangered species.
+      You can choose a linear model or a stressor response function, and choose positive or negative weights
+      for your variables. ",
+      
+      title = 'Spatial Analysis Tool Introduction - 3',
+      easyClose = TRUE,
+      fade = F,
+      footer = actionButton(inputId = 'intro_step_5',
+                            label = "Next")
+    ))
+})
+
+observeEvent(input$intro_step_5, {
+  showModal(
+    modalDialog(
+      "Step four is exciting - you get to see the fruits of your labour! Upload a spatial layer if you have
+      one for your project, or use the pre-loaded natural resource regions ('FLNRORD regions'). Inspect the results
+      either as vector output on the left or raster output. Click the downoad buttons
+      on the bottom of the page to download results as a table, shapefile, or raster.",
+      
+      title = 'Spatial Analysis Tool Introduction - 4',
+      easyClose = TRUE,
+      fade = F
+    ))
+})
 #Reactive expression to read in user data. This function can parse .zip, .gpkg, and .xlsx files.
 UserDat = reactive({
   
@@ -135,14 +214,15 @@ UserDatSelected = reactive({
       
       #Modify variable selected by loop: convert character to ordered factor (numeric)
       dat = dat %>% 
-        #Replace NA with 0...
-        #mutate(!!sym(variable_name) := replace(!!sym(variable_name), is.na(!!sym(variable_name)), "Data missing")) %>%
-        #Make new column that will be used as x-axis markers in the histograms of the binning page
+        ##Replace NA with 0...
+        ##mutate(!!sym(variable_name) := replace(!!sym(variable_name), is.na(!!sym(variable_name)), "Data missing")) %>%
+        ##Make new column that will be used as x-axis markers in the histograms of the binning page
         mutate(!!sym(paste0(variable_name,"_label")) := !!sym(variable_name)) %>% 
-        #Convert variable i to a numeric ordered factor.
+        ##Convert variable i to a numeric ordered factor.
+        mutate(!!sym(paste0(variable_name,"_as_character")) := factor(!!sym(variable_name),
+                                                         levels = variable_sorter)) %>% 
         mutate(!!sym(variable_name) := as.numeric(factor(!!sym(variable_name),
-                                                         levels = variable_sorter
-        ))) %>% 
+                                                         levels = variable_sorter))) %>% 
         #Add the number to the label.
         mutate(!!sym(paste0(variable_name,"_label")) := paste0(!!sym(paste0(variable_name,"_label")),
                                                                " (",

@@ -1,0 +1,13 @@
+name: SpatialAnalysisApp
+title: SpatialAnalysisApp
+username:
+account: chrispaulmadsen
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7797601
+bundleId: 6582957
+url: https://chrispaulmadsen.shinyapps.io/SpatialAnalysisApp/
+when: 1670003614.69643
+lastSyncTime: 1670003614.69644
+asMultiple: FALSE
+asStatic: FALSE

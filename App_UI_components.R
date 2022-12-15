@@ -59,14 +59,10 @@ data_cleaning_panel = tabItem("dataCleaning_Binning",
 model_specification_panel = tabItem("modelSpecification",
                                     h3("Model:"),
                                     uiOutput("modeltext"),
-                                    selectInput(inputId = "model_selection_type",
-                                                label = "Model Selection Type",
-                                                choices = c("Linear Equation" = "lineareq",
-                                                            "Stressor Response Function(s)" = "stressor"),
-                                                selected = "lineareq"),
                                     uiOutput('model_selection_panel'),
-                                    #tags$div(id = 'variable_stressor_models'),
-                                    #tags$div(id = "variable_coefs"),
+                                    checkboxInput(inputId = 'bin_results_question',
+                                                  label = 'Bin Results?'),
+                                    uiOutput('optional_results_binning'),
                                     hr(),
                                     hr(),
                                     h3("Model Output"),
@@ -108,13 +104,14 @@ results_panel = tabItem("Results",
 ## Full panels
 
 my_header = dashboardHeader(
-  #title = "Test"
-  title = dashboardBrand(
-    title = "Spatial Analysis Tool",
-    color = "primary"
-    # href = "https://adminlte.io/themes/v3",
-    # image = div(img(src="robot-head.png", width = '100px')),
-  )
+  title = div(
+    dashboardBrand(
+      title = "Spatial Analysis Tool",
+      color = "primary"
+    ),
+    style = 'text-align:center;font-'
+  ),
+  actionButton(inputId = 'instructions_request', label = "Click me for instructions")
   # leftUi = tagList(data_upload_panel,
   #         data_cleaning_panel,
   #         model_specification_panel,
@@ -163,7 +160,7 @@ my_sidebar = bs4Dash::dashboardSidebar(
     hr(style = "border-top: 5px solid #980028;"),
     h3("Contact Information"),
     h5("App Developer: Chris Madsen"),
-    h5("Chris.Madsen@gov.bc.ca")
+    h5("madsen.chris26@gmail.com")
   ),
   width = 4,
   minified = F

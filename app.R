@@ -2,8 +2,7 @@ library(shiny)
 library(shinydashboard)
 library(tidyverse) #For data manipulation and piping.
 library(sf) #For vector spatial functions.
-# library(leaflet)
-# library(leaflet.extras)
+library(plotly)
 library(DT) #For interactive data tables.
 library(terra) #For raster functions.
 library(readxl) #To read in excel files.
