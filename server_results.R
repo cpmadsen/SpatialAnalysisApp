@@ -101,7 +101,7 @@ output$spatial_results_map = renderPlot({
     # scale_fill_continuous(palette = 'magma') +
     theme_minimal()
   # }
-  
+    
   # rast_map = if(input$bin_results == "Yes"){
   #   gplot(SpatialResultsRast()) +
   #     geom_tile(aes(fill = as.factor(value))) +

@@ -143,7 +143,7 @@ my_sidebar = bs4Dash::dashboardSidebar(
         menuItem(
           tagList(
             h5("Step 3"),
-            h6('Select interaction model')
+            h6('Select interaction coefficients')
           ), tabName = "modelSpecification"),
         style = 'height:50%;'
       ),
